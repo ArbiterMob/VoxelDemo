@@ -48,6 +48,18 @@
                     height: 32px;
                 }
             } 
+
+            #crosshair {
+                position: absolute;
+                top: 50%;
+                left: 50%;
+                color: white;
+                font-family: sans-serif;
+                font-size: 24px;
+                font-weight: bold;
+                pointer-events: none;
+                display: block;
+            }
         </style>
 
         <!--
@@ -63,9 +75,6 @@
 
         <script type="module" src="projectCG.js"></script>
         <script type="module" src="utils.js"></script>
-        <script type="module" src="controls/helpers.js"></script>
-        <script type="module" src="controls/helpers-control.js"></script>
-        <script type="module" src="controls/renderer-control.js"></script>
     </head>
     <body>
         <canvas id="c"></canvas>
@@ -79,5 +88,7 @@
                 <input type="radio" name="voxel" id="voxel5" value="5"><label for="voxel5" style="background-position: -400% -0%"></label>           
             </div>
         </div>     
+
+        <div id="crosshair">+</div>
     </body>
 </html>

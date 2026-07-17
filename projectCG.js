@@ -1,11 +1,27 @@
 import * as THREE from 'three';
+import * as UTILS from './utils.js';
 import { GUI } from 'three/addons/libs/lil-gui.module.min.js';
 import Stats from "three/examples/jsm/libs/stats.module";
-//import { initializeRendererControls } from './controls/renderer-control';
-//import { initializeHelperControls } from './controls/helpers-control';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
-import * as UTILS from './utils.js';
+import { PointerLockControls } from 'three/addons/controls/PointerLockControls.js';
 import { randInt } from 'three/src/math/MathUtils.js';
+
+
+import { EffectComposer } from 'three/addons/postprocessing/EffectComposer.js'
+import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
+import { OutputPass } from 'three/addons/postprocessing/OutputPass.js';
+
+import { BloomPass } from 'three/addons/postprocessing/BloomPass.js';
+import { FilmPass } from 'three/addons/postprocessing/FilmPass.js';
+
+import { ShaderPass } from 'three/addons/postprocessing/ShaderPass.js';
+import { RGBShiftShader } from 'three/addons/shaders/RGBShiftShader.js';
+import { DotScreenShader } from 'three/addons/shaders/DotScreenShader.js';
+
+import { HalftonePass } from 'three/addons/postprocessing/HalftonePass.js';
+
+import { RenderPixelatedPass } from 'three/addons/postprocessing/RenderPixelatedPass.js';
+
 
 class VoxelWorld
 {
@@ -145,18 +161,19 @@ class VoxelWorld
         };
     }
 
-    intersectRay(normalizedPosition, scene, camera)
+    intersectRay(normalizedPosition, scene, camera, maxDistance = 200)
     {
         const raycaster = new THREE.Raycaster();
         raycaster.setFromCamera(normalizedPosition, camera);
+        raycaster.far = maxDistance;
 
         const intersectedObject = raycaster.intersectObjects(scene.children);
         const intersection = intersectedObject.find(intersect => intersect.object instanceof THREE.Mesh && intersect.face);
 
         if (intersection)
         {
-            const point = intersectedObject[0].point;
-            const normal = intersectedObject[0].face.normal;
+            const point = intersection.point;
+            const normal = intersection.face.normal;
 
             const voxelX = Math.floor(point.x - normal.x * 0.5);
             const voxelY = Math.floor(point.y - normal.y * 0.5);
@@ -260,53 +277,61 @@ function main() {
         tileTextureWidth,
         tileTextureHeight,
     });
+    const lightColor = 0x1A5FB4;
 
     const fov = 45;
     const aspect = 2;
     const near = 0.1;
     const far = 1000;
     const camera = new THREE.PerspectiveCamera(fov, aspect, near, far);
-    camera.position.set(- cellSize * .3, cellSize * .8, - cellSize * .3);
+    camera.position.set(- cellSize * .3, cellSize * .8, - cellSize * .3 );
+    //camera.position.set(- cellSize * 1.5,  cellSize * .8, - cellSize * 1.5 );
     //camera.position.set(0, 10, 20);
 
-    // TODO -> add a second camera !!!
+    const fpCamera = new THREE.PerspectiveCamera(100, aspect, near, far);
+    fpCamera.position.set(cellSize / 2 + 2, 15, cellSize / 2 + 2);
 
-    const controls = new OrbitControls(camera, canvas);
-    controls.target.set(cellSize / 2, cellSize / 3, cellSize / 2);
-	//controls.enableDamping = true;
-    //controls.dampingFactor = 0.05;
-    /*controls.minDistance = 3;
-    controls.maxDistance = 10;*/
-    //controls.minPolarAngle = Math.PI / 4;
-    //controls.maxPolarAngle = (3 * Math.PI) / 4;
-    
-    //controls.target.set(0, 5, 0);
-    controls.update();
+    let activeCamera;
+
+    const orbitControls = new OrbitControls(camera, canvas);
+    orbitControls.target.set(cellSize, cellSize / 3, cellSize);
+	/*orbitControls.enableDamping = true;
+    orbitControls.dampingFactor = 0.05;
+    orbitControls.minDistance = 3;
+    orbitControls.maxDistance = 10;
+    orbitControls.minPolarAngle = Math.PI / 4;
+    orbitControls.maxPolarAngle = (3 * Math.PI) / 4;*/
+    orbitControls.update();
+
+    const fpControls = new PointerLockControls(fpCamera, canvas);
 
     const scene = new THREE.Scene();
-    scene.background = new THREE.Color('lightblue');
-    //scene.fog = new THREE.Fog('lightblue', scene.near, 50);
+    //scene.background = new THREE.Color('lightblue');
+    scene.background = new THREE.Color(lightColor);
+
+    const sceneFog = new THREE.Fog(lightColor, 0.1, 50);
+    scene.fog = sceneFog;
     //#endregion
 
     //#region LIGHT
-    const color = 0xFFFFFF;
+    //const lightColor = 0x1A5FB4;
     const intensity = 3;
-    const light = new THREE.DirectionalLight(color, intensity);
-    light.position.set(45, 60, 40);
+    const light = new THREE.DirectionalLight(lightColor, intensity);
+    light.position.set(85, 60, 80);
     light.target.position.set(16, 12, 16); // Point at the center of the world
     light.castShadow = true;
 
-    light.shadow.camera.left = -30;
-    light.shadow.camera.right = 30;
-    light.shadow.camera.top = 30;
-    light.shadow.camera.bottom = -30;
-    light.shadow.camera.near = 0.1;
-    light.shadow.camera.far = 100;
-    light.shadow.mapSize.width = 4096;
-    light.shadow.mapSize.height = 4096;
+    light.shadow.camera.left = -125;
+    light.shadow.camera.right = 125;
+    light.shadow.camera.top = 125;
+    light.shadow.camera.bottom = -125;
+    light.shadow.camera.near = 1;
+    light.shadow.camera.far = 150;
+    light.shadow.mapSize.width = 8192;
+    light.shadow.mapSize.height = 8192;
 
-    light.shadow.normalBias = 0.02;
     light.shadow.bias = -0.0001;
+    light.shadow.normalBias = 0.05;
 
     scene.add(light);
     scene.add(light.target);
@@ -315,9 +340,86 @@ function main() {
     scene.add(ambientlight);
 
     const lightHelper = new THREE.DirectionalLightHelper(light);
+    lightHelper.visible = false;
     scene.add(lightHelper);
     const shadowCameraHelper = new THREE.CameraHelper(light.shadow.camera);
+    shadowCameraHelper.visible = false;
     scene.add(shadowCameraHelper);
+    //#endregion
+
+    //#region POST PROCESSING
+    const composer = new EffectComposer(renderer)
+    
+    const renderPass = new RenderPass(scene, camera);
+    composer.addPass(renderPass);
+    
+    // %%% Bloom + Film %%%
+    const bloomPass = new BloomPass(1, 25, 4, 256);
+    composer.addPass(bloomPass);
+    const filmPass = new FilmPass(0.5, false);
+    composer.addPass(filmPass);
+
+    // %%% DotScreen + RGBShift %%%
+    const dotScreenPass = new ShaderPass(DotScreenShader);
+    dotScreenPass.uniforms['scale'].value = 4;
+    composer.addPass(dotScreenPass);
+    const rgbShiftPass = new ShaderPass(RGBShiftShader);
+    rgbShiftPass.uniforms['amount'].value = 0.0015;
+    composer.addPass(rgbShiftPass);
+
+    // %%% Halftone %%%
+    const halToneParams = 
+    {
+        shape: 1,
+        radius: 4,
+        rotateR: Math.PI / 12,
+        rotateG: Math.PI / 12 * 2,
+        rotateB: Math.PI / 12 * 3,
+        scatter: 0,
+        blending: 1,
+        blendingMode: 1,
+        greyscale: false,
+        //disable: false,
+    }
+    const halftonePass = new HalftonePass(halToneParams);
+    composer.addPass(halftonePass);
+
+    // %%% Pixelated %%%
+    const renderPixelatedPass = new RenderPixelatedPass(6, scene, camera);
+    composer.addPass(renderPixelatedPass);
+
+    const outputPass = new OutputPass();
+    composer.addPass(outputPass);
+
+    function updatePostProcessingEffects(selectedEffect)
+    {
+        bloomPass.enabled = false;
+        filmPass.enabled = false;
+        dotScreenPass.enabled = false;
+        rgbShiftPass.enabled = false;
+        halftonePass.enabled = false;
+        renderPixelatedPass.enabled = false;
+
+        if (selectedEffect === 'bloomFilm')
+        {
+            bloomPass.enabled = true;
+            filmPass.enabled = true;
+        }
+        else if (selectedEffect === 'dotScreenRGBShift')
+        {
+            dotScreenPass.enabled = true;
+            rgbShiftPass.enabled = true;
+        }
+        else if (selectedEffect === 'halftone')
+        {
+            halftonePass.enabled = true;
+        }
+        else if (selectedEffect === 'pixelated')
+        {
+            renderPixelatedPass.enabled = true;
+            renderPixelatedPass.camera = activeCamera;
+        }
+    }
     //#endregion
 
     //#region MESH
@@ -327,8 +429,8 @@ function main() {
     texture.minFilter = THREE.NearestFilter;
     texture.colorSpace = THREE.SRGBColorSpace;
     
-    for (let i = 0; i < 3; i++) {
-        for (let j = 0; j < 3; j++) {
+    for (let i = 0; i < 2; i++) {
+        for (let j = 0; j < 2; j++) {
             for (let y = 0; y < cellSize; y++) {
                 for (let z = 0; z < cellSize; z++) {
                     for (let x = 0; x < cellSize; x++) {
@@ -379,44 +481,92 @@ function main() {
             mesh.castShadow = true;
             mesh.receiveShadow = true;
             scene.add(mesh);
-            //mesh.position.set(cellX * cellSize, cellY * cellSize, cellZ * cellSize);
         }
     }
 
-    for (let i = 0; i < 3; i++) {
-        for (let j = 0; j < 3; j++) {
-            /*const {positions, normals, uvs, indices} = world.generateGeometryDataForCell(j, 0, i);
-            const geometry = new THREE.BufferGeometry();
-            const material = new THREE.MeshLambertMaterial({
-                map: texture,
-                side: THREE.DoubleSide,
-                /*alphaTest: 0.1,
-                transparent: true,
-            });
-
-            const positionNumComponents = 3;
-            const normalNumComponents = 3;
-            const uvNumComponents = 2;
-            geometry.setAttribute(
-                'position',
-                new THREE.BufferAttribute(new Float32Array(positions), positionNumComponents)
-            );
-            geometry.setAttribute(
-                'normal',
-                new THREE.BufferAttribute(new Float32Array(normals), normalNumComponents)
-            );
-            geometry.setAttribute(
-                'uv',
-                new THREE.BufferAttribute(new Float32Array(uvs), uvNumComponents)
-            );
-            geometry.setIndex(indices);
-            const mesh = new THREE.Mesh(geometry, material);
-            mesh.castShadow = true;
-            mesh.receiveShadow = true;
-            scene.add(mesh);*/
+    for (let i = 0; i < 2; i++) {
+        for (let j = 0; j < 2; j++) {
             updateCellGeometry(j * cellSize, 0, i * cellSize);
         }
     }
+    //#endregion
+
+    //#region FP MOVEMENT
+    const raycasterFar = 1.5;
+    let raycasterDown = new THREE.Raycaster(new THREE.Vector3(), new THREE.Vector3(0, -1, 0), 0, raycasterFar);
+    let rayCasterTop = new THREE.Raycaster();
+    let raycasterRight = new THREE.Raycaster();
+    let raycasterLeft = new THREE.Raycaster();
+    let raycasterFront = new THREE.Raycaster();
+    let raycasterBack = new THREE.Raycaster();
+
+	let moveForward = false;
+	let moveBackward = false;
+	let moveLeft = false;
+	let moveRight = false;
+	let canJump = false;
+
+	let prevTime = performance.now();
+	const velocity = new THREE.Vector3();
+	const localInput = new THREE.Vector3();
+
+    const onKeyDown = function(event)
+    {
+        switch (event.code)
+        {
+            case 'ArrowUp':
+            case 'KeyW':
+                moveForward = true;
+                break;
+
+            case 'ArrowLeft':
+            case 'KeyA':
+                moveLeft = true;
+                break;
+
+            case 'ArrowDown':
+            case 'KeyS':
+                moveBackward = true;
+                break;
+
+            case 'ArrowRight':
+            case 'KeyD':
+                moveRight = true;
+                break;
+
+            case 'Space':
+                if (canJump === true) velocity.y += 30;
+                canJump = false;
+                break;
+
+        }
+    };
+
+    const onKeyUp = function(event)
+    {
+        switch (event.code)
+        {
+            case 'ArrowUp':
+            case 'KeyW':
+                moveForward = false;
+                break;
+
+            case 'ArrowLeft':
+            case 'KeyA':
+                moveLeft = false;
+                break;
+
+            case 'ArrowDown':
+            case 'KeyS':
+                moveBackward = false;
+                break;
+
+            case 'ArrowRight':
+            case 'KeyD':
+                moveRight = false;
+                break;
+        }
+    };
     //#endregion
 
     //#region GUI
@@ -432,10 +582,11 @@ function main() {
 
     function updateCamera()
     {
-        camera.updateProjectionMatrix();
+        activeCamera.updateProjectionMatrix();
     }
 
     const gui = new GUI();
+    const guiState = { shadows: true, fog: true, fpCamera: false, };
     //initializeRendererControls(gui, renderer);
     //initializeHelperControls(gui, scene);
 
@@ -445,29 +596,173 @@ function main() {
     lightFolder.add(light, 'intensity', 0, 5, 0.01);
     UTILS.makeXYZGUI(lightFolder, light.position, 'position', updateLight);
     UTILS.makeXYZGUI(lightFolder, light.target.position, 'target', updateLight);
+    lightFolder.close();
 
     const shadowFolder = lightFolder.addFolder('Shadow Camera');
     shadowFolder.add(shadowCameraHelper, 'visible').name('showHelper');
-    shadowFolder.add(new UTILS.DimensionGUIHelper(light.shadow.camera, 'left', 'right'), 'value', 1, 100)
+    shadowFolder.add(guiState, 'shadows').name('Shadows on').onChange((v) => {
+        renderer.shadowMap.enabled = v;
+        scene.traverse((obj) => { if (obj.isMesh) obj.material.needsUpdate = true; });
+    });
+    shadowFolder.add(new UTILS.DimensionGUIHelper(light.shadow.camera, 'left', 'right'), 'value', 1, 300)
         .name('width').onChange(updateLight);
-    shadowFolder.add(new UTILS.DimensionGUIHelper(light.shadow.camera, 'bottom', 'top'), 'value', 1, 100)
+    shadowFolder.add(new UTILS.DimensionGUIHelper(light.shadow.camera, 'bottom', 'top'), 'value', 1, 300)
         .name('height').onChange(updateLight);
     const shadowCameraMinMaxGUIHelper = new UTILS.MinMaxGUIHelper(light.shadow.camera, 'near', 'far', 0.1);
     shadowFolder.add(shadowCameraMinMaxGUIHelper, 'min', 0.1, 50, 0.1).name('near').onChange(updateLight);
     shadowFolder.add(shadowCameraMinMaxGUIHelper, 'max', 0.1, 1000, 0.1).name('far').onChange(updateLight);
     shadowFolder.add(light.shadow.camera, 'zoom', 0.01, 1.5, 0.01).onChange(updateLight);
+    shadowFolder.close();
 
     const cameraFolder = gui.addFolder('Camera');
-    cameraFolder.add(camera, 'fov', 1, 180).onChange(updateCamera);
-    const cameraMinMaxGUIHelper = new UTILS.MinMaxGUIHelper(camera, 'near', 'far', 0.1);
-    cameraFolder.add(cameraMinMaxGUIHelper, 'min', 0.1, 50, 0.1).name('near').onChange(updateCamera);
-    cameraFolder.add(cameraMinMaxGUIHelper, 'max', 0.1, 1000, 0.1).name('far').onChange(updateCamera);
+    const freeCameraFolder = cameraFolder.addFolder('Free Camera');
+    const fpCameraFolder = cameraFolder.addFolder('First Person Camera');
+    freeCameraFolder.add(camera, 'fov', 1, 180).onChange(updateCamera);
+    const freeCameraMinMaxGUIHelper = new UTILS.MinMaxGUIHelper(camera, 'near', 'far', 0.1);
+    freeCameraFolder.add(freeCameraMinMaxGUIHelper, 'min', 0.1, 50, 0.1).name('near').onChange(updateCamera);
+    freeCameraFolder.add(freeCameraMinMaxGUIHelper, 'max', 0.1, 1000, 0.1).name('far').onChange(updateCamera);
+    fpCameraFolder.add(fpCamera, 'fov', 1, 180).onChange(updateCamera);
+    const fpCameraMinMaxGUIHelper = new UTILS.MinMaxGUIHelper(fpCamera, 'near', 'far', 0.1);
+    fpCameraFolder.add(fpCameraMinMaxGUIHelper, 'min', 0.1, 50, 0.1).name('near').onChange(updateCamera);
+    fpCameraFolder.add(fpCameraMinMaxGUIHelper, 'max', 0.1, 1000, 0.1).name('far').onChange(updateCamera);
+    cameraFolder.close();
 
-    /*const fogFolder = gui.addFolder('Fog');
-    const fogGUIHelper = new UTILS.FogGUIHelper(scene.fog, scene.background);
+    const fogFolder = gui.addFolder('Fog');
+    fogFolder.add(guiState, 'fog').name('Fog on').onChange((v) => {
+        scene.fog = v ? sceneFog : null;
+        scene.traverse((obj) => { if (obj.isMesh) obj.material.needsUpdate = true; });
+    });
+    const fogGUIHelper = new UTILS.FogGUIHelper(sceneFog, scene.background);
     fogFolder.add(fogGUIHelper, 'near', 1, 50).listen();
     fogFolder.add(fogGUIHelper, 'far', 1, 50).listen();
-    fogFolder.addColor(fogGUIHelper, 'color');*/
+    fogFolder.addColor(fogGUIHelper, 'color');
+    fogFolder.close();
+
+    // %%% POST PROC GUI 
+    const postProcessingController = { postProcessing: 'disabled' };
+    const postProcessingFolder = gui.addFolder('Post Processing'); 
+    postProcessingFolder.add(postProcessingController, 'postProcessing', {
+        'Disabled': 'disabled',
+        'Bloom+Film': 'bloomFilm',
+        'DotScreen+RGBShift': 'dotScreenRGBShift',
+        'Halftone': 'halftone',
+        'Pixelated': 'pixelated',
+    }).onChange(v => updatePostProcessingEffects(v));
+
+    const bloomFilmFolder = postProcessingFolder.addFolder('Bloom+Film');
+    const bloomPassFolder = bloomFilmFolder.addFolder('BloomPass');
+    bloomPassFolder.add(bloomPass.combineUniforms.strength, 'value', 0, 2).name('strength');
+    const filmPassFolder = bloomFilmFolder.addFolder('FilmPass');
+    filmPassFolder.add(filmPass.uniforms.grayscale, 'value').name('grayscale');
+    filmPassFolder.add(filmPass.uniforms.intensity, 'value', 0, 1).name('intensity');
+    bloomFilmFolder.close();
+
+    const halftoneController = 
+    {
+        shape: halftonePass.uniforms['shape'].value,
+        radius: halftonePass.uniforms['radius'].value,
+        rotateR: halftonePass.uniforms['rotateR'].value / (Math.PI / 180),
+        rotateG: halftonePass.uniforms['rotateG'].value / (Math.PI / 180),
+        rotateB: halftonePass.uniforms['rotateB'].value / (Math.PI / 180),
+        scatter: halftonePass.uniforms['scatter'].value,
+        blending: halftonePass.uniforms['blending'].value,
+        blendingMode: halftonePass.uniforms['blendingMode'].value,
+        greyscale: halftonePass.uniforms['greyscale'].value,
+        //disable: halftonePass.uniforms['disable'].value,
+    }
+    const halftoneFolder = postProcessingFolder.addFolder('Halftone');
+    halftoneFolder.add( halftoneController, 'shape', { 'Dot': 1, 'Ellipse': 2, 'Line': 3, 'Square': 4, 'Diamond': 5 } ).onChange( onHalftonePassGUIChange );
+    halftoneFolder.add( halftoneController, 'radius', 1, 25 ).onChange(onHalftonePassGUIChange);
+    halftoneFolder.add( halftoneController, 'rotateR', 0, 90 ).onChange(onHalftonePassGUIChange);
+    halftoneFolder.add( halftoneController, 'rotateG', 0, 90 ).onChange(onHalftonePassGUIChange);
+    halftoneFolder.add( halftoneController, 'rotateB', 0, 90 ).onChange(onHalftonePassGUIChange);
+    halftoneFolder.add( halftoneController, 'scatter', 0, 1, 0.01 ).onChange(onHalftonePassGUIChange);
+    halftoneFolder.add( halftoneController, 'greyscale' ).onChange(onHalftonePassGUIChange);
+    halftoneFolder.add( halftoneController, 'blending', 0, 1, 0.01 ).onChange(onHalftonePassGUIChange);
+    halftoneFolder.add( halftoneController, 'blendingMode', { 'Linear': 1, 'Multiply': 2, 'Add': 3, 'Lighter': 4, 'Darker': 5 } ).onChange( onHalftonePassGUIChange );
+    //halftoneFolder.add( postProcessingController, 'disable' ).onChange(onHalftonePassGUIChange);
+    halftoneFolder.close();
+
+    function onHalftonePassGUIChange()
+    {
+        // update uniforms
+        halftonePass.uniforms[ 'radius' ].value = halftoneController.radius;
+        halftonePass.uniforms[ 'rotateR' ].value = halftoneController.rotateR * ( Math.PI / 180 );
+        halftonePass.uniforms[ 'rotateG' ].value = halftoneController.rotateG * ( Math.PI / 180 );
+        halftonePass.uniforms[ 'rotateB' ].value = halftoneController.rotateB * ( Math.PI / 180 );
+        halftonePass.uniforms[ 'scatter' ].value = halftoneController.scatter;
+        halftonePass.uniforms[ 'shape' ].value = halftoneController.shape;
+        halftonePass.uniforms[ 'greyscale' ].value = halftoneController.greyscale;
+        halftonePass.uniforms[ 'blending' ].value = halftoneController.blending;
+        halftonePass.uniforms[ 'blendingMode' ].value = halftoneController.blendingMode;
+        //halftonePass.uniforms[ 'disable' ].value = postProcessingController.disable;
+    }
+
+    const pixelatedController = 
+    {
+        pixelSize: 6,
+        normalEdgeStrength: .3,
+        depthEdgeStrength: .4,
+    }
+    const pixelatedFolder = postProcessingFolder.addFolder('Pixelated');
+    pixelatedFolder.add(pixelatedController, 'pixelSize').min(1).max(16).step(1)
+        .onChange(() => renderPixelatedPass.setPixelSize(pixelatedController.pixelSize));
+    pixelatedFolder.add(renderPixelatedPass, 'normalEdgeStrength').min(0).max(2).step(.05);
+    pixelatedFolder.add(renderPixelatedPass, 'depthEdgeStrength').min(0).max(1).step(.05);
+    pixelatedFolder.close();
+    postProcessingFolder.close();
+    
+
+    const optionsState = { activeCamera: 'firstPerson', raycaster: false };
+    {
+        activeCamera = fpCamera;
+        renderPass.camera = fpCamera;
+        orbitControls.enabled = false;
+        document.addEventListener('keydown', onKeyDown);
+        document.addEventListener('keyup', onKeyUp);
+        if (document.activeElement) document.activeElement.blur();
+    }
+    const crosshair = document.querySelector("#crosshair");
+    const optionsFolder = gui.addFolder('Game Options');
+    optionsFolder.add(optionsState, 'activeCamera', { 'Free': 'free', 'First Person': 'firstPerson'}).onChange((v) => {
+        if (v === 'free') 
+        {
+            activeCamera = camera;
+            renderPass.camera = camera;
+            renderPixelatedPass.camera = camera;
+
+            fpControls.unlock();
+            orbitControls.enabled = true;
+            document.removeEventListener('keydown', onKeyDown);
+            document.removeEventListener('keyup', onKeyUp);
+
+            if (crosshair) crosshair.style.display = 'none';
+        }
+        else if (v === 'firstPerson')
+        {
+            activeCamera = fpCamera;
+            renderPass.camera = fpCamera;
+            renderPixelatedPass.camera = fpCamera;
+
+            fpControls.lock();
+            orbitControls.enabled = false;
+            document.addEventListener('keydown', onKeyDown);
+            document.addEventListener('keyup', onKeyUp);
+
+            if (document.activeElement) document.activeElement.blur();
+
+            if (crosshair) crosshair.style.display = 'block';
+        }
+    });
+    optionsFolder.add(optionsState, 'raycaster')
+
+    const bench = { fps: 0, drawCalls: 0, triangles: 0, geometries: 0 }
+    const bf    = gui.addFolder('Renderer stats')
+    bf.add(bench, 'fps').listen().disable()
+    bf.add(bench, 'drawCalls').name('draw calls').listen().disable()
+    bf.add(bench, 'triangles').listen().disable()
+    bf.add(bench, 'geometries').listen().disable()
+    bf.open()
     //#endregion
 
     //#region USER INTERFACE
@@ -506,11 +801,23 @@ function main() {
 
     function placeVoxel(event)
     {
-        const pos = getCanvasRelativePosition(event);
-        const x = (pos.x / canvas.width ) *  2 - 1;
-        const y = (pos.y / canvas.height) * -2 + 1;
+        let x, y;
+        let maxDistance = 200;
 
-        const intersection = world.intersectRay({x, y}, scene, camera);
+        if (activeCamera === fpCamera)
+        {
+            x = 0;
+            y = 0;
+            maxDistance = 8;
+        }
+        else 
+        {
+            const pos = getCanvasRelativePosition(event);
+            x = (pos.x / canvas.width ) *  2 - 1;
+            y = (pos.y / canvas.height) * -2 + 1;
+        }
+
+        const intersection = world.intersectRay({x, y}, scene, activeCamera, maxDistance);
         if (intersection) 
         {
             const voxelId = event.shiftKey ? 0 : currentVoxel;
@@ -549,8 +856,20 @@ function main() {
     }
 
     function placeVoxelIfNoMovement(event)
-    {
-        if (mouse.moveX < 5 && mouse.moveY < 5)
+    {   
+        if (activeCamera === fpCamera)
+        {
+            if (!fpControls.isLocked)
+            {
+                if (document.activeElement) document.activeElement.blur();
+                fpControls.lock();
+            }
+            else
+            {
+                placeVoxel(event);
+            }
+        }
+        else if (mouse.moveX < 5 && mouse.moveY < 5)
         {
             placeVoxel(event);
         }
@@ -611,17 +930,241 @@ function main() {
     const stats = Stats();
     document.body.appendChild(stats.dom);
 
+    let frameCount   = 0;
+    let fpsTimestamp = 0;
+
+    updatePostProcessingEffects(postProcessingController.postProcessing);
+
     function render() {
+
+        const time = performance.now();
 
         if (resizeRendererToDisplaySize(renderer)) {
             const canvas = renderer.domElement;
+            
             camera.aspect = canvas.clientWidth / canvas.clientHeight;
             camera.updateProjectionMatrix();
+
+            fpCamera.aspect = canvas.clientWidth / canvas.clientHeight;
+            fpCamera.updateProjectionMatrix();
+
+            composer.setSize(canvas.width, canvas.height);
+        }
+
+        if (time - fpsTimestamp >= 500) {
+            bench.fps         = Math.round(frameCount * 2);
+            bench.drawCalls   = renderer.info.render.calls;
+            bench.triangles   = renderer.info.render.triangles;
+            bench.geometries  = renderer.info.memory.geometries;
+            frameCount        = 0;
+            fpsTimestamp      = time;
         }
 
 
+
+        if (activeCamera === fpCamera && fpControls.isLocked)
+        {
+            const delta = (time - prevTime) / 1000;
+            const playerPos = fpControls.object.position;
+
+            if (optionsState.raycaster)
+            {
+                raycasterDown.ray.origin.copy(playerPos);
+                //raycaster.ray.origin.y += 3;
+                const intersectionsDown = raycasterDown.intersectObjects(scene.children, false);
+                const validIntersectionsDown = intersectionsDown.find(intersect => intersect.object instanceof THREE.Mesh && intersect.face);
+                const onObject = validIntersectionsDown !== undefined;
+
+                const forward = new THREE.Vector3();
+                fpCamera.getWorldDirection(forward);
+                forward.y = 0;
+                forward.normalize();
+                const right = new THREE.Vector3();
+                right.crossVectors(forward, fpCamera.up).normalize();
+                const backward = forward.clone().negate();
+                const left = right.clone().negate();
+                const top = fpCamera.up.normalize();
+
+
+                const bodyPos = playerPos.clone();
+                bodyPos.y -= 0.5;
+                const collisionDistance = 0.6;
+
+                raycasterFront.set(bodyPos, forward);
+                raycasterFront.far = collisionDistance;
+
+                raycasterBack.set(bodyPos, backward);
+                raycasterBack.far = collisionDistance;
+
+                raycasterRight.set(bodyPos, right);
+                raycasterRight.far = collisionDistance;
+
+                raycasterLeft.set(bodyPos, left);
+                raycasterLeft.far = collisionDistance;
+
+                rayCasterTop.set(playerPos, top);
+                rayCasterTop.far = collisionDistance;
+
+
+                const isColliding = (raycaster) => {
+                    return raycaster.intersectObjects(scene.children, false)
+                        .some(intersect => intersect.object instanceof THREE.Mesh && intersect.face);
+                };
+
+                const colFront = isColliding(raycasterFront);
+                const colBack = isColliding(raycasterBack);
+                const colRight = isColliding(raycasterRight);
+                const colLeft = isColliding(raycasterLeft);
+                const colTop = isColliding(rayCasterTop);
+
+                velocity.x -= velocity.x * 10.0 * delta;
+                velocity.z -= velocity.z * 10.0 * delta;
+                velocity.y -= 3 * 100.0 * delta; // 100.0 = mass
+
+                localInput.x = Number(moveRight) - Number(moveLeft);
+                localInput.z = Number(moveForward) - Number(moveBackward);
+                localInput.normalize(); // this ensures consistent movements in all directions
+
+                if (moveForward || moveBackward) velocity.z += localInput.z * 100.0 * delta;
+                if (moveLeft || moveRight) velocity.x += localInput.x * 100.0 * delta;
+
+                if (colFront && velocity.z > 0) velocity.z = 0;
+                if (colBack  && velocity.z < 0) velocity.z = 0;
+                if (colRight && velocity.x > 0) velocity.x = 0;
+                if (colLeft  && velocity.x < 0) velocity.x = 0;
+                if (colTop   && velocity.y > 0) velocity.y = 0;
+
+                if (onObject)
+                {
+                    velocity.y = Math.max(0, velocity.y);
+                    canJump = true;
+                }
+
+                fpControls.moveRight(velocity.x * delta);
+                fpControls.moveForward(velocity.z * delta);
+
+                fpControls.object.position.y += (velocity.y * delta);
+
+                if (fpControls.object.position.y < raycasterFar)
+                {
+                    velocity.y = 0;
+                    fpControls.object.position.y = raycasterFar;
+                    canJump = true;
+                }
+            }
+            else 
+            {
+                const playerHeight = 1.6;
+                const playerRadius = 0.3;
+
+                const checkCollision = (px, py, pz, yOffset, yHeight) => 
+                {
+                    const minX = Math.floor(px - playerRadius);
+                    const maxX = Math.floor(px + playerRadius);
+                    const minZ = Math.floor(pz - playerRadius);
+                    const maxZ = Math.floor(pz + playerRadius);
+                    const minY = Math.floor(py + yOffset);
+                    const maxY = Math.floor(py + yHeight);
+
+                    for (let y = minY; y <= maxY; y++) 
+                    {
+                        for (let z = minZ; z <= maxZ; z++)
+                        {
+                            for (let x = minX; x <= maxX; x++)
+                            {
+                                if (world.getVoxel(x, y, z) > 0) 
+                                    return true;
+                            }
+                        }
+                    }
+
+                    return false;
+                };
+
+                velocity.x -= velocity.x * 10.0 * delta;
+                velocity.z -= velocity.z * 10.0 * delta;
+                velocity.y -= 3 * 100.0 * delta; // 100.0 = mass
+
+                localInput.x = Number(moveRight) - Number(moveLeft);
+                localInput.z = Number(moveForward) - Number(moveBackward);
+                localInput.normalize(); // this ensures consistent movements in all directions
+
+                if (localInput.x !== 0 || localInput.z !== 0)
+                {
+                    const forward = new THREE.Vector3();
+                    fpControls.object.getWorldDirection(forward);
+                    forward.y = 0;
+                    forward.normalize();
+
+                    const right = new THREE.Vector3();
+                    right.crossVectors(forward, fpControls.object.up).normalize();
+
+                    let moveDirX = (forward.x * localInput.z) + (right.x * localInput.x);
+                    let moveDirZ = (forward.z * localInput.z) + (right.z * localInput.x);
+
+                    const length = Math.sqrt(moveDirX * moveDirX + moveDirZ * moveDirZ);
+                    if (length > 0)
+                    {
+                        moveDirX /= length;
+                        moveDirZ /= length;
+                    }
+
+                    velocity.x += moveDirX * 70.0 * delta;
+                    velocity.z += moveDirZ * 70.0 * delta;
+                }
+
+                /*/if (moveForward || moveBackward) velocity.z += direction.z * 100.0 * delta;
+                if (moveLeft || moveRight) velocity.x += direction.x * 100.0 * delta;*/
+
+                const nextX = playerPos.x + (velocity.x * delta);
+                const nextY = playerPos.y + (velocity.y * delta);
+                const nextZ = playerPos.z + (velocity.z * delta);
+
+                if (checkCollision(nextX, playerPos.y, playerPos.z, -playerHeight + 0.1, 0))
+                    velocity.x = 0;
+                if (checkCollision(playerPos.x, playerPos.y, nextZ, -playerHeight + 0.1, 0))
+                    velocity.z = 0;
+
+                if (velocity.y < 0)
+                {
+                    if (checkCollision(playerPos.x, nextY, playerPos.z, -playerHeight, -playerHeight))
+                    {
+                        velocity.y = 0;
+                        canJump = true;
+                    }
+                }
+                else if (velocity.y > 0)
+                {
+                    if (checkCollision(playerPos.x, nextY, playerPos.z, 0.1, 0.1))
+                        velocity.y = 0;
+                }
+
+                /*fpControls.moveRight(velocity.x * delta);
+                fpControls.moveForward(velocity.z * delta);*/
+                fpControls.object.position.x += velocity.x * delta;
+                fpControls.object.position.z += velocity.z * delta;
+                fpControls.object.position.y += (velocity.y * delta);
+
+                if (fpControls.object.position.y < playerHeight)
+                {
+                    velocity.y = 0;
+                    fpControls.object.position.y = playerHeight;
+                    canJump = true;
+                }
+
+            }
+
+            
+        }
+
+        prevTime = time;
+
         stats.update();
-        renderer.render(scene, camera);
+
+        if (postProcessingController.postProcessing === 'disabled')
+            renderer.render(scene, activeCamera);
+        else
+            composer.render();
 
         requestAnimationFrame(render);
     }
