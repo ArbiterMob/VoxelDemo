@@ -1,5 +1,6 @@
 import * as THREE from 'three';
 import * as UTILS from './utils.js';
+import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { GUI } from 'three/addons/libs/lil-gui.module.min.js';
 import Stats from "three/examples/jsm/libs/stats.module";
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
@@ -161,14 +162,14 @@ class VoxelWorld
         };
     }
 
-    intersectRay(normalizedPosition, scene, camera, maxDistance = 200)
+    intersectRay(normalizedPosition, scene, camera, maxDistance)
     {
         const raycaster = new THREE.Raycaster();
         raycaster.setFromCamera(normalizedPosition, camera);
         raycaster.far = maxDistance;
 
-        const intersectedObject = raycaster.intersectObjects(scene.children);
-        const intersection = intersectedObject.find(intersect => intersect.object instanceof THREE.Mesh && intersect.face);
+        const intersectedObjects = raycaster.intersectObjects(scene.children);
+        const intersection = intersectedObjects.find(intersect => intersect.object instanceof THREE.Mesh && intersect.face);
 
         if (intersection)
         {
@@ -268,7 +269,7 @@ function main() {
 
     //#region CAMERA, SCENE
     const tileSize = 16;
-    const tileTextureWidth = 80;
+    const tileTextureWidth = 128;
     const tileTextureHeight = 64;
     const cellSize = 32;
     const world = new VoxelWorld({
@@ -277,7 +278,7 @@ function main() {
         tileTextureWidth,
         tileTextureHeight,
     });
-    const lightColor = 0x1A5FB4;
+    const lightColor = 0x99C1F1;
 
     const fov = 45;
     const aspect = 2;
@@ -422,9 +423,42 @@ function main() {
     }
     //#endregion
 
+    //#region LOAD GLB/GLTF 
+    let davyJonesMesh;
+
+    const gltfLoader = new GLTFLoader();
+    gltfLoader.load('./resources/davyJones.glb', (gltf) => {
+        const root = gltf.scene;
+        console.log(dumpObject(root).join('\n'));
+        davyJonesMesh = root.getObjectByName('davyJones');
+        davyJonesMesh.material = new THREE.MeshStandardMaterial({
+            vertexColors: true,
+        })
+        davyJonesMesh.geometry.computeVertexNormals();
+        davyJonesMesh.castShadow = true;
+        davyJonesMesh.receiveShadow = true;
+        davyJonesMesh.position.copy(fpCamera.position);
+        davyJonesMesh.visible = false;
+        scene.add(davyJonesMesh);
+    });
+
+    function dumpObject(obj, lines = [], isLast = true, prefix = '')
+    {
+        const localPrefix = isLast ? '└─' : '├─';
+        lines.push(`${prefix}${prefix ? localPrefix : ''}${obj.name || '*no-name*'} [${obj.type}]`);
+        const newPrefix = prefix + (isLast ? '  ' : '| ');
+        const lastNdx = obj.children.length - 1;
+        obj.children.forEach((child, ndx) => {
+            const isLast = ndx === lastNdx;
+            dumpObject(child, lines, isLast, newPrefix);
+        });
+        return lines;
+    }
+    //#endregion
+
     //#region MESH
     const loader = new THREE.TextureLoader();
-    const texture = loader.load('./resources/atlas.png', render);
+    const texture = loader.load('./resources/atlasPOT.png', render);
     texture.magFilter = THREE.NearestFilter;
     texture.minFilter = THREE.NearestFilter;
     texture.colorSpace = THREE.SRGBColorSpace;
@@ -436,7 +470,7 @@ function main() {
                     for (let x = 0; x < cellSize; x++) {
                         const height = (Math.sin((j * cellSize + x) / cellSize * Math.PI * 2) + Math.sin((i * cellSize + z) / cellSize * Math.PI * 3)) * (cellSize / 6) + (cellSize / 2);
                         if (y < height) {
-                            world.setVoxel(j*cellSize + x, y, i*cellSize + z, randInt(1, 5));
+                            world.setVoxel(j*cellSize + x, y, i*cellSize + z, randInt(1, 8));
                         }
                     }
                 }
@@ -737,6 +771,23 @@ function main() {
             document.removeEventListener('keyup', onKeyUp);
 
             if (crosshair) crosshair.style.display = 'none';
+
+            if (davyJonesMesh)
+            {
+                davyJonesMesh.position.copy(fpCamera.position);
+                davyJonesMesh.position.y -= .08;
+
+                const forward = new THREE.Vector3();
+                fpControls.object.getWorldDirection(forward);
+                forward.y = 0;
+                forward.normalize();
+                davyJonesMesh.rotation.y = Math.atan2(forward.x, forward.z);
+
+                davyJonesMesh.visible = true;
+
+                orbitControls.target.copy(davyJonesMesh.position);
+                orbitControls.update();
+            }
         }
         else if (v === 'firstPerson')
         {
@@ -752,6 +803,11 @@ function main() {
             if (document.activeElement) document.activeElement.blur();
 
             if (crosshair) crosshair.style.display = 'block';
+
+            if (davyJonesMesh)
+            {
+                davyJonesMesh.visible = false;
+            }
         }
     });
     optionsFolder.add(optionsState, 'raycaster')
@@ -787,6 +843,34 @@ function main() {
             currentVoxel = parseInt(this.value);
         }
     }
+
+    window.addEventListener('wheel', (event) => {
+        if (activeCamera === fpCamera && fpControls.isLocked)
+        {
+            const voxelRadios = document.querySelectorAll('#ui .tiles input[type=radio][name=voxel]');
+            const values = Array.from(voxelRadios).map(elem => parseInt(elem.value));
+            let currentIndex = values.indexOf(currentVoxel);
+
+            if (event.deltaY < 0)
+                currentIndex = (currentIndex + 1) % values.length;
+            else if (event.deltaY > 0)
+                currentIndex = (currentIndex - 1 + values.length) % values.length;
+
+            currentVoxel = values[currentIndex];
+
+            voxelRadios.forEach((elem) => {
+                if (parseInt(elem.value) === currentVoxel) 
+                {
+                    elem.checked = true;
+                    currentId = elem.id;
+                }
+                else 
+                {
+                    elem.checked = false;
+                }
+            })
+        }
+    });
     //#endregion
     
     //#region RAYCASTER
@@ -938,6 +1022,7 @@ function main() {
     function render() {
 
         const time = performance.now();
+        frameCount++;
 
         if (resizeRendererToDisplaySize(renderer)) {
             const canvas = renderer.domElement;

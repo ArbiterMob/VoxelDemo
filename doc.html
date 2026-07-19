@@ -1,0 +1,329 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Relazione di Progetto: Applicazione Grafica 3D in WebGL</title>
+    <style>
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            line-height: 1.6;
+            color: #333;
+            max-width: 1000px;
+            margin: 0 auto;
+            padding: 20px;
+            background-color: #f9f9f9;
+        }
+        header {
+            border-bottom: 3px solid #2c3e50;
+            padding-bottom: 20px;
+            margin-bottom: 30px;
+        }
+        h1 {
+            color: #2c3e50;
+            margin-bottom: 5px;
+        }
+        h2 {
+            color: #2980b9;
+            border-bottom: 2px solid #ecf0f1;
+            padding-bottom: 8px;
+            margin-top: 40px;
+        }
+        h3 {
+            color: #34495e;
+            margin-top: 25px;
+        }
+        p, li {
+            text-align: justify;
+        }
+        ul, ol {
+            margin-bottom: 20px;
+        }
+        code {
+            font-family: 'Consolas', 'Courier New', Courier, monospace;
+            background-color: #edf2f7;
+            padding: 2px 6px;
+            border-radius: 4px;
+            font-size: 0.9em;
+        }
+        pre {
+            font-family: 'Consolas', 'Courier New', Courier, monospace;
+            background-color: #2d3748;
+            color: #fff;
+            padding: 15px;
+            border-radius: 6px;
+            overflow-x: auto;
+            font-size: 0.85em;
+            line-height: 1.4;
+        }
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            margin: 20px 0;
+            background: #fff;
+            box-shadow: 0 2px 5px rgba(0,0,0,0.05);
+        }
+        th, td {
+            border: 1px solid #e2e8f0;
+            padding: 12px 15px;
+            text-align: left;
+        }
+        th {
+            background-color: #f7fafc;
+            color: #2d3748;
+            font-weight: bold;
+        }
+        tr:nth-child(even) {
+            background-color: #f8fafc;
+        }
+        .highlight {
+            background-color: #fffaf0;
+            border-left: 4px solid #dd6b20;
+            padding: 15px;
+            margin: 20px 0;
+            border-radius: 0 6px 6px 0;
+        }
+    </style>
+</head>
+<body>
+
+<header>
+    <h1>Progetto Modulo 2 - Fondamenti di Computer Graphics</h1>
+    <p><strong>VoxelDemo</strong></p>
+</header>
+
+<section>
+    <h2>1. Descrizione dell'applicazione</h2>
+    <p>Il progetto è una demo interattiva sviluppata con la libreria <strong>Three.js</strong>, fortemente ispirata alle meccaniche del videogioco voxel <em>Minecraft</em>. Pur non avendo un vero e proprio obiettivo, l'applicazione funge da vetrina tecnica per esplorare e testare cosa la libreria offre. Viene generato staticamente un mondo di blocchi (<code>voxelWorld</code>) esplorabile e interattivo.</p>
+    <p>In particolare, la demo mostra l'implementazione e la gestione dei successivi componenti fondamentali:</p>
+    <ul>
+        <li><strong>Illuminazione e Ombre:</strong> Gestione dinamica tramite l'uso di <code>DirectionalLight</code> e <code>AmbientLight</code>.</li>
+        <li><strong>Nebbia:</strong> Implementazione della nebbia volumetrica (<code>Fog</code>) per dare profondità alla scena.</li>
+        <li><strong>Gestione Camere:</strong> Sistemi di visuale a due camere intercambiabili (<code>PerspectiveCamera</code>).</li>
+        <li><strong>Interazione 3D:</strong> Proiezione di raggi nello spazio tramite <code>Raycaster</code> per l'interazione con i blocchi.</li>
+        <li><strong>Controlli Navigazione:</strong> Supporto per controlli differenti tramite <code>PointerLockControls</code> e <code>OrbitControls</code>.</li>
+        <li><strong>Ottimizzazione:</strong> Generazione procedurale e dinamica delle geometrie tramite <code>BufferGeometry</code> per alleggerire il rendering.</li>
+        <li><strong>Modellazione Esterna:</strong> Importazione di un modello 3D attraverso il modulo <code>GLTFLoader</code>.</li>
+        <li><strong>Interfaccia Utente:</strong> UI gestita tramite la libreria <code>lil-gui</code>.</li>
+        <li><strong>Post-Processing:</strong> Tecniche di post-processing per arricchire la scena.</li>
+    </ul>
+</section>
+
+<section>
+    <h2>2. Spiegazione delle scelte effettuate</h2>
+
+    <h3>Ottimizzazione delle Geometrie (VoxelWorld)</h3>
+    <p>Per massimizzare l'efficienza dell'applicazione, si è scelto di non instanziare una <code>BoxGeometry</code> separata per ciascun voxel. Questo approccio avrebbe saturato rapidamente la memoria. Al contrario, l'applicazione definisce una classe personalizzata <code>VoxelWorld</code> che raggruppa i voxel in chunk chiamati "celle" (con dimensione 32x32x32). La geometria viene costruita dinamicamente: l'algoritmo calcola i vertici, le normali e le coordinate UV aggiungendo unicamente le facce visibili del blocco. Verificando la presenza di blocchi adiacenti, la faccia condivisa non viene generata, riducendo drasticamente il numero di triangoli da renderizzare.</p>
+    
+    <pre>generateGeometryDataForCell(cellX, cellY, cellZ) {
+    const {cellSize, tileSize, tileTextureWidth, tileTextureHeight} = this;
+
+    const position = [];
+    const normals = [];
+    const uvs = [];
+    const indices = [];
+
+    const startX = cellX * cellSize;
+    const startY = cellY * cellSize;
+    const startZ = cellZ * cellSize;
+
+    for (let y = 0; y &lt; cellSize; y++) {
+        const voxelY = startY + y;
+        for (let z = 0; z &lt; cellSize; z++) {
+            const voxelZ = startZ + z;
+            for (let x = 0; x &lt; cellSize; x++) {
+                const voxelX = startX + x;
+                const voxel = this.getVoxel(voxelX, voxelY, voxelZ);
+                if (voxel) {
+                    const uvVoxel = voxel - 1; // voxel 0 is sky so for UVs we start at 0
+                    for (const {dir, corners, uvRow} of VoxelWorld.faces) {
+                        
+                        const neighbour = this.getVoxel(
+                            voxelX + dir[0],
+                            voxelY + dir[1],
+                            voxelZ + dir[2]);
+                        
+                        if (!neighbour) {
+                            const ndx = positions.length / 3;
+                            for (const {pos, uv} of corners) {
+                                positions.push(pos[0] + voxelX, pos[1] + voxelY, pos[2] + voxelZ);
+                                normals.push(...dir);
+                                uvs.push(
+                                    (uvVoxel + uv[0]) * tileSize / tileTextureWidth,
+                                    1 - (uvRow + 1 - uv[1]) * tileSize / tileTextureHeight
+                                );
+                            }
+                            indices.push(ndx, ndx + 1, ndx + 2,
+                                ndx + 2, ndx + 1, ndx + 3);
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    return {positions, normals, uvs, indices};
+}
+    </pre>
+
+    <h3>Gestione delle Collisioni (Collision Detection)</h3>
+    <p>Il movimento in prima persona prevede due differenti strategie per la rilevazione delle collisioni, alternabili per dimostrare le differenze architetturali e di performance:</p>
+    <ul>
+        <li><strong>Metodo Raycaster:</strong> Sfrutta istanze multiple di <code>THREE.Raycaster</code> per calcolare le intersezioni in sei direzioni differenti rispetto al giocatore. Sebbene intuitivo, questo metodo comporta un costo computazionale elevato che può causare notevoli cali di frame rate (da 300 fps a 60 fps con tanti blocchi intorno).</li>
+        <li><strong>Metodo Axis-Aligned Bounding Box (AABB) Grid Sweep :</strong> Estremamente più efficiente e accurato, questo approccio calcola preventivamente la posizione futura in cui il giocatore intende muoversi. Utilizza poi la funzione <code>getVoxel(x, y, z)</code> per verificare direttamente nell'array dei dati se lo spazio è occupato. Eseguendo il controllo sia ai piedi che all'altezza degli occhi, garantisce collision detection senza alcun calo di prestazioni.</li>
+    </ul>
+
+    <pre>const checkCollision = (px, py, pz, yOffset, yHeight) => {
+    const minX = Math.floor(px - playerRadius);
+    const maxX = Math.floor(px + playerRadius);
+    const minZ = Math.floor(pz - playerRadius);
+    const maxZ = Math.floor(pz + playerRadius);
+    const minY = Math.floor(py + yOffset);
+    const maxY = Math.floor(py + yHeight);
+    
+    for (let y = minY; y &lt;= maxY; y++) {
+        for (let z = minZ; z &lt;= maxZ; z++) {
+            for (let x = minX; x &lt;= maxX; x++)  {
+                if (world.getVoxel(x, y, z) > 0) 
+                    return true;
+            }
+        }
+    }
+
+    return false;
+};
+    </pre>
+
+    <h3>L'Avatar del Giocatore (Mesh Davy Jones)</h3>
+    <p>Per rappresentare il corpo del giocatore è stata integrata la mesh del personaggio "Davy Jones" (scansionata in classe). Tramite l'uso di <code>GLTFLoader</code>, il modello viene caricato e assegnato a un <code>MeshStandardMaterial</code>. Per ovviare ai problemi di clipping visivo e non ostruire la vista, il modello viene reso invisibile durante la navigazione in prima persona. Passando alla telecamera libera (Free Camera), la mesh riappare e viene traslata esattamente nel punto in cui risiedeva la telecamera, simulando così l'osservazione del proprio avatar dall'esterno.</p>
+</section>
+
+<section>
+    <h2>3. Funzionalità previste ed interattività</h2>
+
+    <h3>Sistemi di Telecamera</h3>
+    <p>L'utente ha a disposizione due distinti Punti di Vista (POV):</p>
+    <ul>
+        <li><strong>Free Camera:</strong> Permette di esplorare la scena liberamente ruotando e zoomando attorno a un punto focale tramite la classe <code>OrbitControls</code>.</li>
+        <li><strong>First Person Camera:</strong> Offre un'esperienza immersiva. Il cursore viene bloccato nello schermo (tramite <code>PointerLockControls</code>) e compare un mirino centrale. Il movimento avviene sfruttando i classici comandi direzionali (<code>W, A, S, D</code>), mentre la barra spaziatrice permette di saltare.</li>
+    </ul>
+
+    <h3>Posizionamento e Rimozione dei Voxel</h3>
+    <p>L'interazione con i blocchi avviene tramite la proiezione di un raggio dal centro della telecamera. Il raggio possiede una distanza d'azione massima (8 unità in prima persona, 200 in telecamera libera) per limitare le modifiche a zone realisticamente raggiungibili.</p>
+    <ul>
+        <li>La <strong>selezione</strong> del blocco da posizionare avviene cliccando sull'interfaccia ad icone in alto a sinistra, oppure scorrendo la rotella del mouse quando ci si trova in prima persona.</li>
+        <li>Per <strong>piazzare</strong> un blocco è sufficiente cliccare il tasto sinistro del mouse dopo aver selezionato una tipologia valida.</li>
+        <li>Per <strong>distruggere</strong> un blocco, l'utente può cliccare il tasto sinistro senza alcun blocco selezionato nella UI, oppure tenere premuto il tasto <code>Shift</code> durante il click sinistro (ignorando il blocco selezionato).</li>
+    </ul>
+
+    <pre>intersectRay(normalizedPosition, scene, camera, maxDistance) {
+    const raycaster = new THREE.Raycaster();
+    raycaster.setFromCamera(normalizedPosition, camera);
+    raycaster.far = maxDistance;
+
+    const intersectedObjects = raycaster.intersectObjects(scene.children);
+    const intersection = intersectedObjects.find(intersect => intersect.object instanceof THREE.Mesh && intersect.face);
+
+    if (intersection) {
+        const point = intersection.point;
+        const normal = intersection.face.normal;
+
+        const voxelX = Math.floor(point.x - normal.x * 0.5);
+        const voxelY = Math.floor(point.y - normal.y * 0.5);
+        const voxelZ = Math.floor(point.z - normal.z * 0.5);
+        const voxel = this.getVoxel(voxelX, voxelY, voxelZ);
+
+        return {position: point, normal: normal, voxel};
+    }
+}
+
+function placeVoxel(event) {
+    let x, y;
+    let maxDistance = 200;
+    
+    if (activeCamera === fpCamera) {
+        x = 0;
+        y = 0;
+        maxDistance = 8;
+    }
+    else 
+    {
+        const pos = getCanvasRelativePosition(event);
+        x = (pos.x / canvas.width ) *  2 - 1;
+        y = (pos.y / canvas.height) * -2 + 1;
+    }
+
+    const intersection = world.intersectRay({x, y}, scene, activeCamera, maxDistance);
+    if (intersection) {
+        const voxelId = event.shiftKey ? 0 : currentVoxel;
+
+        // the intersection point is on the face. That means
+        // the math imprecision could put us on either side of the face.
+        // so go half a normal into the voxel if removing (currentVoxel = 0)
+        // our out of the voxel if adding (currentVoxel  > 0)
+        const offset = voxelId > 0 ? 0.5 : -0.5;
+        const voxelX = Math.floor(intersection.position.x + intersection.normal.x * offset);
+        const voxelY = Math.floor(intersection.position.y + intersection.normal.y * offset);
+        const voxelZ = Math.floor(intersection.position.z + intersection.normal.z * offset);
+            
+        world.setVoxel(voxelX, voxelY, voxelZ, voxelId);
+        updateVoxelGeometry(voxelX, voxelY, voxelZ);
+    }
+}
+    </pre>
+</section>
+
+<section>
+    <h2>4. Particolarità tecniche</h2>
+
+    <h3>Effetti di Post-Processing</h3>
+    <p>Oltre al normale flusso di rendering, è stato implementato un sistema avanzato sfruttando <code>EffectComposer</code>. L'utente può abilitare diversi shader dinamicamente dal pannello della GUI:</p>
+
+    <table>
+        <tr>
+            <th>Effetto</th>
+            <th>Descrizione</th>
+        </tr>
+        <tr>
+            <td><strong>Bloom + Film</strong></td>
+            <td>Aggiunge un alone luminoso brillante ai punti di luce (BloomPass), accoppiato a grana da pellicola cinematografica e leggera distorsione ottica (FilmPass).</td>
+        </tr>
+        <tr>
+            <td><strong>DotScreen + RGBShift</strong></td>
+            <td>Applica un retino grafico per lo schermo affiancato allo sfalsamento dei canali cromatici, simulando un effetto di aberrazione cromatica.</td>
+        </tr>
+        <tr>
+            <td><strong>Halftone</strong></td>
+            <td>Simula la tecnica del retino tipografico.</td>
+        </tr>
+        <tr>
+            <td><strong>Pixelated</strong></td>
+            <td>Renderizza la scena a bassa risoluzione aggiungendo linee di profondità, creando un effetto "Pixel-Art".</td>
+        </tr>
+    </table>
+
+    <pre>// Esempio del filtro Bloom+Film
+const composer = new EffectComposer(renderer)
+    
+const renderPass = new RenderPass(scene, camera);
+composer.addPass(renderPass);
+    
+// %%% Bloom + Film %%%
+const bloomPass = new BloomPass(1, 25, 4, 256);
+composer.addPass(bloomPass);
+const filmPass = new FilmPass(0.5, false);
+composer.addPass(filmPass);
+
+const outputPass = new OutputPass();
+composer.addPass(outputPass);
+    </pre>
+
+    <h3>Interfaccia GUI e Architettura Modulare</h3>
+    <p>Tutta la scena e i suoi parametri sono gestiti dinamicamente tramite <code>lil-gui</code>. Per interfacciarsi correttamente agli oggetti complessi di Three.js, il file <code>utils.js</code> espone delle classi "Helper" basate sulle linee guida ufficiali. Queste classi (come <code>ColorGUIHelper</code> e <code>MinMaxGUIHelper</code>) fungono da ponte, trasformando vettori e colori nativi in stringhe e valori lineari gestibili dagli slider.</p>
+    
+    <h3>Texturing tramite Atlas</h3>
+    <p>Il texturing del mondo non avviene caricando un'immagine per ogni singolo materiale, ma attraverso un approccio ottimizzato chiamato <strong>Texture Atlas</strong> (<code>atlasPOT.png</code>). Si tratta di un'unica immagine che racchiude i design di tutti i blocchi, dimensionata in potenza di due per ottimizzare il mip mapping. La stessa immagine viene riutilizzata nell'HTML per generare le icone della UI, modificando il posizionamento tramite attributi CSS.</p>
+</section>
+
+</body>
+</html>
