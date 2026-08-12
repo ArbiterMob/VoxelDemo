@@ -1,4 +1,5 @@
 package-lock.json
 eslint.config.mjs
+todo.txt
 node_modules/
 tutorial/tutorial_base.js

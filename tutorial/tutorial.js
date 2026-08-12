@@ -1,12 +1,12 @@
 import * as THREE from 'three';
 import * as UTILS from '../utils.js';
+import * as UTILS_SKELETON from './utilsSkeleton.js';
+import * as UTILS_PROCEDURAL from './utilsProcedural.js';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { GUI } from 'three/addons/libs/lil-gui.module.min.js';
 import Stats from "three/examples/jsm/libs/stats.module";
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 //import { PointerLockControls } from 'three/addons/controls/PointerLockControls.js';
-
-import * as SkeletonUtils from 'three/addons/utils/SkeletonUtils.js';
 
 function main() 
 {
@@ -65,52 +65,39 @@ function main()
     scene.add(shadowCameraHelper);
     //#endregion
 
-    //#region LOAD GLB/GLTF, MESH
-    //let skeletonHelper;
-    
-    const skeletons = [];
-    //let mixer;
-    //let idleAction, walkAction;
-    let idleWeight, walkWeight;
-    //let actions;
+    //#region LOAD GLB/GLTF, MESH    
+    const skeletons = [], rats = [];
+    let rootSkel, rootRat, animations;
+
+    const generalAnimationSettings = {
+        'add new skeleton': () => {
+            const skel = UTILS_SKELETON.createCharacter(scene, rootSkel, animations, [Math.random() * 5 + 1, 0, Math.random() * 5 + 1]);
+            skeletons.push(skel);
+            addSkeletonFolder(skel);
+        }
+    }
+
+    const gui = new GUI();
+
+    const animationFolder = gui.addFolder('Animation');
+    animationFolder.add(generalAnimationSettings, 'add new skeleton');
+    animationFolder.close();
     
     const gltfLoader = new GLTFLoader();
     gltfLoader.load('../resources/skeleton.glb', (gltf) => {
-        const root = gltf.scene;
-        console.log(dumpObject(root).join('\n'));
+        rootSkel = gltf.scene;
+        animations = gltf.animations
+        console.log(dumpObject(rootSkel).join('\n'));
 
-        /*root.traverse((child) => {
-            if (child.isMesh) 
-            {
-                child.castShadow = true;
-                child.receiveShadow = true;
-                if (!child.geometry.attributes.normal)
-                {
-                    child.geometry.computeVertexNormals();
-                }
-            }
-        });
-        
-        scene.add(root);
+        skeletons.push(UTILS_SKELETON.createCharacter(scene, rootSkel, animations, [0, 0, 0]));
+        addSkeletonFolder(skeletons[0]);
+    });
 
-        skeletonHelper = new THREE.SkeletonHelper(root.getObjectByName('rig'));
-		skeletonHelper.visible = false;
-		scene.add(skeletonHelper);
+    gltfLoader.load('../resources/rat.glb', (gltf) => {
+        rootRat = gltf.scene;
+        console.log(dumpObject(rootRat).join('\n'));
 
-        const animations = gltf.animations;
-        mixer = new THREE.AnimationMixer(root);
-        idleAction = mixer.clipAction(animations[0]);
-        walkAction = mixer.clipAction(animations[1]);
-        actions = [idleAction, walkAction];*/
-
-        for (let i = 0; i < 2; i++)
-        {
-            skeletons.push(createCharacter(root, gltf.animations, {x: i * 2, y: 0, z: 0}));
-        } 
-
-        //walkAction.play();
-        activateAllActions();
-
+        rats.push(UTILS_PROCEDURAL.createCharacter(scene, rootRat, [-1, 0, 0]));
     });
     
     function dumpObject(obj, lines = [], isLast = true, prefix = '')
@@ -126,46 +113,56 @@ function main()
         return lines;
     }
 
-    function createCharacter(sourceRoot, animations, position) {
-        const character = SkeletonUtils.clone(sourceRoot);
-        character.position.set(position.x, position.y, position.z);
-
-        character.traverse((child) => {
-            if (child.isMesh) 
-            {
-                child.castShadow = true;
-                child.receiveShadow = true;
-                if (!child.geometry.attributes.normal)
-                {
-                    child.geometry.computeVertexNormals();
-                }
-            }
-        });
-
-        scene.add(character);
-
-        const characterMixer = new THREE.AnimationMixer(character);
-        const idleAction = characterMixer.clipAction(animations[0]);
-        const walkAction = characterMixer.clipAction(animations[1]);
-        
-        const skeletonHelper = new THREE.SkeletonHelper(character.getObjectByName('rig'));
-        skeletonHelper.visible = false;
-        scene.add(skeletonHelper);
-
-        return {
-            root: character,
-            mixer: characterMixer,
-            helper: skeletonHelper,
-            idleAction,
-            walkAction,
-        }
-
-    }
-
     const plane = new THREE.Mesh( new THREE.PlaneGeometry( 100, 100 ), new THREE.MeshPhongMaterial( { color: 0xcbcbcb, depthWrite: false } ) );
 	plane.rotation.x = - Math.PI / 2;
 	plane.receiveShadow = true;
 	scene.add( plane );
+
+    // PATH
+    let curveRat;
+    let curveObjectRat;
+
+    {
+        const controlPoints = [
+            [-2.000000, 0.000000, 0.000000],
+            [-1.000000, 0.000000, 0.000000], 
+            [0.000000, 0.000000, 0.000000],
+            [1.000000, 0.000000, 0.000000],
+            [2.000000, 0.000000, 0.000000],
+            [2.000000, 0.000000, -3.000000],
+            [-4.000000, 0.000000, -3.000000],
+            [-4.000000, 0.000000, 2.000000],
+            [-1.000000, 0.000000, 2.000000],
+            [-1.000000, 0.000000, -6.000000],
+            [3.000000, 0.000000, -6.000000],
+            [3.000000, 0.000000, -8.000000],
+            [-2.000000, 0.000000, -8.000000],
+        ];
+
+        const p0 = new THREE.Vector3();
+        const p1 = new THREE.Vector3();
+        curveRat = new THREE.CatmullRomCurve3(
+            controlPoints.map((p, ndx) => {
+                p0.set(...p);
+                p1.set(...controlPoints[(ndx + 1) % controlPoints.length]);
+                return [
+                    (new THREE.Vector3()).copy(p0),
+                    (new THREE.Vector3()).lerpVectors(p0, p1, 0.1),
+                    (new THREE.Vector3()).lerpVectors(p0, p1, 0.9),
+                ];
+            }).flat(),
+            true,
+        );
+
+        {
+            const points = curveRat.getPoints(250);
+            const geometry = new THREE.BufferGeometry().setFromPoints(points);
+            const material = new THREE.LineBasicMaterial({color: 0xff0000});
+            curveObjectRat = new THREE.Line(geometry, material);
+            curveObjectRat.position.set(-5, 0, 0);
+            scene.add(curveObjectRat);
+        }
+    }
     //#endregion
 
     //#region GUI
@@ -184,7 +181,6 @@ function main()
         camera.updateProjectionMatrix();
     }
     
-    const gui = new GUI();
     const guiState = { shadows: true, fog: true };
 
     const lightFolder = gui.addFolder('Light');
@@ -226,158 +222,48 @@ function main()
     bf.add(bench, 'geometries').listen().disable()
     bf.open()
     //#endregion
-
+    
+    
     //#region GUI ANIMATION SKELETON
-    const animationSettings = {
-        'show skeleton': false,
-        'from walk to idle': function() {
-            skeletons.forEach(function (skel)
-            {
-                prepareCrossFade(skel, skel.walkAction, skel.idleAction, 1.0);
-            });
-        },
-        'from idle to walk': function() {
-            skeletons.forEach(function (skel)
-            {
-                prepareCrossFade(skel, skel.idleAction, skel.walkAction, 0.5);
-            });
-        },
-        'use default duration': true,
-        'set custom duration': 3.5,
-        'modify idle weight': 1.0,
-        'modify walk weight': 0.0,
-        'modify time scale': 1.0,
-    }
-    
-    const crossFadeControls = [];
-
-    const animationFolder = gui.addFolder('Animation');
-    const crossFadeFolder = animationFolder.addFolder('Crossfading');
-    const blendWeightsFolder = animationFolder.addFolder('Blend Weights');
-
-    animationFolder.add(animationSettings, 'show skeleton').onChange(function (visibility) {
-        skeletons.forEach(function (skel)
-        {
-            skel.helper.visible = visibility;
-        });
-    });
-
-    crossFadeControls.push(crossFadeFolder.add(animationSettings, 'from walk to idle'));
-    crossFadeControls.push(crossFadeFolder.add(animationSettings, 'from idle to walk'));
-    crossFadeFolder.add(animationSettings, 'use default duration');
-    crossFadeFolder.add(animationSettings, 'set custom duration', 0, 10, 0.01);
-    
-    blendWeightsFolder.add(animationSettings, 'modify idle weight', 0.0, 1.0, 0.01).listen().onChange(function (weight) {
-        skeletons.forEach(function (skel)
-        {
-            setWeight(skel.idleAction, weight);
-        });
-    });
-    blendWeightsFolder.add(animationSettings, 'modify walk weight', 0.0, 1.0, 0.01).listen().onChange(function (weight) {
-        skeletons.forEach(function (skel)
-        {
-            setWeight(skel.walkAction, weight);
-        });
-    });
-
-    crossFadeFolder.close();
-    blendWeightsFolder.close();
-    animationFolder.close();
-
-    function activateAllActions()
+    function addSkeletonFolder(skel)
     {
-        skeletons.forEach(function (skel)
-        {
-            setWeight(skel.idleAction, animationSettings['modify idle weight']);
-            setWeight(skel.walkAction, animationSettings['modify walk weight']);
+        const skelFolder = animationFolder.addFolder(`Skeleton-${skeletons.length}`);
+        const crossFadeFolder = skelFolder.addFolder('Crossfading');
+        const blendWeightsFolder = skelFolder.addFolder('Blend Weights');
 
-            skel.idleAction.play();
-            skel.walkAction.play();
-        });
+        skelFolder.add(skel.animationSettings, 'show skeleton').onChange((visibility) => skel.helper.visible = visibility);
+
+        skel.crossFadeControls.push(crossFadeFolder.add(skel.animationSettings, 'from walk to idle'));
+        skel.crossFadeControls.push(crossFadeFolder.add(skel.animationSettings, 'from idle to walk'));
+        crossFadeFolder.add(skel.animationSettings, 'use default duration');
+        crossFadeFolder.add(skel.animationSettings, 'set custom duration', 0, 10, 0.01);
+
+        blendWeightsFolder.add(skel.animationSettings, 'modify idle weight', 0.0, 1.0, 0.01).listen().onChange((weight) => UTILS_SKELETON.setWeight(skel.idleAction, weight));
+        blendWeightsFolder.add(skel.animationSettings, 'modify walk weight', 0.0, 1.0, 0.01).listen().onChange((weight) => UTILS_SKELETON.setWeight(skel.walkAction, weight));
+
+        crossFadeFolder.open();
+        blendWeightsFolder.open();
+        skelFolder.close();
     }
 
-    function unPauseAllActions()
+    function updateWeightSliders(skel)
     {
-        skeletons.forEach(function (skel)
-        {
-            skel.idleAction.paused = false;
-            skel.walkAction.paused = false;
-        });
+        skel.animationSettings['modify idle weight'] = skel.idleWeight;
+        skel.animationSettings['modify walk weight'] = skel.walkWeight;
     }
 
-    function prepareCrossFade(skel, startAction, endAction, defaultDuration)
+    function updateCrossFadeControls(skel)
     {
-        const duration = setCrossFadeDuration(defaultDuration);
-        unPauseAllActions();
-
-        if (startAction === skel.idleAction)
+        if (skel.idleWeight === 1 && skel.walkWeight === 0)
         {
-            executeCrossFade(startAction, endAction, duration);
-        }
-        else 
-        {
-            synchronizeCrossFade(skel.mixer, startAction, endAction, duration);
-        }
-    } 
-
-    function setCrossFadeDuration(defaultDuration)
-    {
-        if (animationSettings['use default duration'])
-        {
-            return defaultDuration;
-        }
-        else 
-        {
-            return animationSettings['set custom duration'];
-        }
-    }
-
-    function synchronizeCrossFade(mixer, startAction, endAction, duration)
-    {
-        mixer.addEventListener('loop', (onLoopFinished));
-
-        function onLoopFinished(event)
-        {
-            if (event.action === startAction)
-            {
-                mixer.removeEventListener('loop', onLoopFinished);
-                executeCrossFade(startAction, endAction, duration);
-            }
-        }
-    }
-
-    function executeCrossFade(startAction, endAction, duration)
-    {
-        setWeight(endAction, 1);
-        endAction.time = 0;
-        startAction.crossFadeTo(endAction, duration, true);
-    }
-
-    function setWeight(action, weight)
-    {
-        action.enabled = true;
-        action.setEffectiveTimeScale(1);
-        action.setEffectiveWeight(weight);
-    }
-
-    function updateWeightSliders()
-    {
-        animationSettings['modify idle weight'] = idleWeight;
-        animationSettings['modify walk weight'] = walkWeight;
-    }
-
-    function updateCrossFadeControls()
-    {
-        if (idleWeight === 1 && walkWeight === 0)
-        {
-            crossFadeControls[0].disable();
-            crossFadeControls[1].enable();
+            skel.crossFadeControls[0].disable();
+            skel.crossFadeControls[1].enable();
         }
 
-        if (idleWeight === 0 && walkWeight === 1)
+        if (skel.idleWeight === 0 && skel.walkWeight === 1)
         {
-            crossFadeControls[0].enable();
-            crossFadeControls[1].disable();
+            skel.crossFadeControls[0].enable();
+            skel.crossFadeControls[1].disable();
         }
     }
     //#endregion
@@ -405,6 +291,9 @@ function main()
     timer.connect(document);
     //let prevTime = performance.now();
 
+    const ratPosition = new THREE.Vector3();
+    const ratTarget = new THREE.Vector3();
+
     function render() {
 
         timer.update();
@@ -413,13 +302,14 @@ function main()
 
         if (skeletons.length > 0)
         {
-            const referenceSkeleton = skeletons[0];
+            skeletons.forEach((skel) =>
+            {
+                skel.idleWeight = skel.idleAction.getEffectiveWeight();
+                skel.walkWeight = skel.walkAction.getEffectiveWeight();
 
-            idleWeight = referenceSkeleton.idleAction.getEffectiveWeight();
-            walkWeight = referenceSkeleton.walkAction.getEffectiveWeight();
-
-            updateWeightSliders();
-            updateCrossFadeControls();
+                updateWeightSliders(skel);
+                updateCrossFadeControls(skel);
+            })
         }
 
         if (resizeRendererToDisplaySize(renderer)) {
@@ -451,6 +341,34 @@ function main()
         {
             skeleton.mixer.update(mixerUpdateDelta);
         }
+
+        //#region PATH MOVEMENT
+        if (rats.length > 0)
+        {
+            const pathTime = time * .00005;
+            const targetOffset = 0.01;
+            rats.forEach((rat, ndx) => {
+                // a number between 0 and 1 to evenly space the rats
+                const u = pathTime + ndx / rats.length;
+
+                // get the first point
+                curveRat.getPointAt(u % 1, ratPosition);
+                ratPosition.applyMatrix4(curveObjectRat.matrixWorld);
+
+                // get a second point slightly further down the curve
+                curveRat.getPointAt((u + targetOffset) % 1, ratTarget);
+                ratTarget.applyMatrix4(curveObjectRat.matrixWorld);
+
+                // put the rat at the first point (temporarily)
+                rat.root.position.copy(ratPosition);
+                // point the rat to the second point
+                rat.root.lookAt(ratTarget);
+
+                // put the rat between the 2 points
+                rat.root.position.lerpVectors(ratPosition, ratTarget, 0.5);
+            });  
+        }
+        //#endregion
 
         stats.update();
         renderer.render(scene, camera);
