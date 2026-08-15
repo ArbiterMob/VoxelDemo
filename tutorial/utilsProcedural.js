@@ -2,7 +2,7 @@
 
 export function createCharacter(scene, sourceRoot, position) 
 {
-    const character = sourceRoot;
+    const character = sourceRoot.clone();
     character.position.set(position[0], position[1], position[2]);
 
     character.traverse((child) => {

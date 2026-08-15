@@ -37,6 +37,12 @@ export function createCharacter(scene, sourceRoot, animations, position)
         idleWeight: 1,
         walkWeight: 0,
         crossFadeControls: [],
+        
+        // this is just for utility
+        actions: {
+            'Idle': idleAction,
+            'Walk': walkAction,
+        },
     };
 
     skel.animationSettings = {

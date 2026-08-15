@@ -14,6 +14,9 @@ function main()
     const canvas = document.querySelector("#c");
     const renderer = new THREE.WebGLRenderer({ antialias: true, canvas });
     renderer.shadowMap.enabled = true;
+
+    const group = new THREE.Group();
+    const followGroup = new THREE.Group();
     //#endregion
 
     //#region CAMERA, SCENE
@@ -26,33 +29,43 @@ function main()
 
     const orbitControls = new OrbitControls(camera, canvas);
     orbitControls.target.set(0, 1, 0);
+    
+    orbitControls.enableDamping = true;
+    orbitControls.enablePan = true;
+    orbitControls.maxPolarAngle = Math.PI / 2 - 0.05;
+    
     orbitControls.update();
 
     const scene = new THREE.Scene();
     scene.background = new THREE.Color('lightblue');
+    scene.add(group);
+    scene.add(followGroup);
     //#endregion
 
     //#region LIGHT
     const intensity = 3;
     const light = new THREE.DirectionalLight(0xFFFFFF, intensity);
-    light.position.set(15, 15, 10);
+    light.position.set(5, 3, 3);
     light.target.position.set(0, 1, 0); // Point at the center of the world
     light.castShadow = true;
     
-    light.shadow.camera.left = -10;
-    light.shadow.camera.right = 10;
-    light.shadow.camera.top = 10;
-    light.shadow.camera.bottom = -10;
+    light.shadow.camera.left = -5;
+    light.shadow.camera.right = 5;
+    light.shadow.camera.top = 5;
+    light.shadow.camera.bottom = -5;
     light.shadow.camera.near = 1;
-    light.shadow.camera.far = 30;
-    light.shadow.mapSize.width = 2048;
-    light.shadow.mapSize.height = 2048;
+    light.shadow.camera.far = 15;
+    light.shadow.mapSize.width = 1024;
+    light.shadow.mapSize.height = 1024;
     
     light.shadow.bias = -0.0001;
     light.shadow.normalBias = 0.05;
     
-    scene.add(light);
-    scene.add(light.target);
+    followGroup.add(light);
+    followGroup.add(light.target);
+    
+    /*scene.add(light);
+    scene.add(light.target);*/
     
     const ambientlight = new THREE.AmbientLight(0xFFFFFF, 0.35);
     scene.add(ambientlight);
@@ -68,20 +81,42 @@ function main()
     //#region LOAD GLB/GLTF, MESH    
     const skeletons = [], rats = [];
     let rootSkel, rootRat, animations;
+    let controllableSkeleton;
 
     const generalAnimationSettings = {
-        'add new skeleton': () => {
-            const skel = UTILS_SKELETON.createCharacter(scene, rootSkel, animations, [Math.random() * 5 + 1, 0, Math.random() * 5 + 1]);
+        'add skeleton': () => {
+            const skel = UTILS_SKELETON.createCharacter(scene, rootSkel, animations, [Math.random() * 5 + 1, 0, Math.random() * - 5 + 1]);
             skeletons.push(skel);
             addSkeletonFolder(skel);
-        }
+        },
+        'remove skeleton': () => {
+            removeSkeletonFolder();
+        },
+        'add rat': () => {
+            const rat = UTILS_PROCEDURAL.createCharacter(scene, rootRat, [0, 0, 0]);
+            rats.push(rat);
+        },
+        'remove rat': () => {
+            if (rats.length > 1) 
+            {
+                const rat = rats.pop();
+                scene.remove(rat.root);
+            }
+        },
     }
 
     const gui = new GUI();
 
     const animationFolder = gui.addFolder('Animation');
-    animationFolder.add(generalAnimationSettings, 'add new skeleton');
-    animationFolder.close();
+    const animationRigFolder = animationFolder.addFolder('Rig');
+    animationRigFolder.add(generalAnimationSettings, 'add skeleton');
+    animationRigFolder.add(generalAnimationSettings, 'remove skeleton');
+    const animationProceduralFoler = animationFolder.addFolder('Procedural');
+    animationProceduralFoler.add(generalAnimationSettings, 'add rat');
+    animationProceduralFoler.add(generalAnimationSettings, 'remove rat');
+    animationProceduralFoler.close();
+    animationRigFolder.close();
+    animationFolder.open();
     
     const gltfLoader = new GLTFLoader();
     gltfLoader.load('../resources/skeleton.glb', (gltf) => {
@@ -89,7 +124,12 @@ function main()
         animations = gltf.animations
         console.log(dumpObject(rootSkel).join('\n'));
 
-        skeletons.push(UTILS_SKELETON.createCharacter(scene, rootSkel, animations, [0, 0, 0]));
+        // controllable skeleton
+        controllableSkeleton = UTILS_SKELETON.createCharacter(scene, rootSkel, animations, [0, 0, 0]);
+        group.add(controllableSkeleton.root);
+
+        // default first skeleton
+        skeletons.push(UTILS_SKELETON.createCharacter(scene, rootSkel, animations, [0, 0, -2]));
         addSkeletonFolder(skeletons[0]);
     });
 
@@ -118,7 +158,7 @@ function main()
 	plane.receiveShadow = true;
 	scene.add( plane );
 
-    // PATH
+    //#region CURVE
     let curveRat;
     let curveObjectRat;
 
@@ -162,6 +202,117 @@ function main()
             curveObjectRat.position.set(-5, 0, 0);
             scene.add(curveObjectRat);
         }
+    }
+    //#endregion
+    //#endregion
+
+    //#region EVENTS
+    const controlsThirdPerson = {
+        key: [0, 0],
+        ease: new THREE.Vector3(),
+        position: new THREE.Vector3(),
+        up: new THREE.Vector3(0, 1, 0),
+        rotate: new THREE.Quaternion(),
+        current: 'Idle',
+        fadeDuration: 0.5,
+        //runVelocity: 5,
+        walkVelocity: 1.8,
+        rotateSpeed: 0.05,
+        floorDecale: 0,
+    };
+
+    document.addEventListener('keydown', onKeyDown);
+    document.addEventListener('keyup', onKeyUp);
+
+    function onKeyDown(event)
+    {
+        const key = controlsThirdPerson.key;
+        switch (event.code)
+        {
+            case 'ArrowUp': case 'KeyW': key[0] = -1; break;
+            case 'ArrowDown': case 'KeyS': key[0] = 1; break;
+            case 'ArrowLeft': case 'KeyA': key[1] = -1; break;
+            case 'ArrowRigh': case 'KeyD': key[1] = 1; break;
+        }
+    }
+
+    function onKeyUp(event)
+    {
+        const key = controlsThirdPerson.key;
+        switch (event.code)
+        {
+            case 'ArrowUp': case 'KeyW': key[0] = key[0] < 0 ? 0 : key[0]; break;
+            case 'ArrowDown': case 'KeyS': key[0] = key[0] > 0 ? 0 : key[0]; break;
+            case 'ArrowLeft': case 'KeyA': key[1] = key[1] < 0 ? 0 : key[1]; break;
+            case 'ArrowRigh': case 'KeyD': key[1] = key[1] > 0 ? 0 : key[1]; break;
+        }
+    } 
+
+    function updateCharacter(delta)
+    {
+        const fade = controlsThirdPerson.fadeDuration;
+        const key = controlsThirdPerson.key;
+        const up = controlsThirdPerson.up;
+        const ease = controlsThirdPerson.ease;
+        const rotate = controlsThirdPerson.rotate;
+        const position = controlsThirdPerson.position;
+        const azimuth = orbitControls.getAzimuthalAngle();
+
+        const active = key[0] === 0 && key[1] === 0 ? false : true;
+        const play = active ? 'Walk' : 'Idle';
+
+        // change animation
+        if (controlsThirdPerson.current != play)
+        {
+            const current = controllableSkeleton.actions[play];
+            const old = controllableSkeleton.actions[controlsThirdPerson.current];
+            controlsThirdPerson.current = play;
+
+            current.reset();
+            current.weight = 1.0;
+            current.stopFading();
+            old.stopFading();
+            if (play !== 'Idle') current.time = old.time * (current.getClip().duration / old.getClip().duration);
+            old._scheduleFading(fade, old.getEffectiveWeight(), 0);
+            current._scheduleFading(fade, current.getEffectiveWeight(), 1);
+            current.play();
+        }
+
+        // move object
+        if (controlsThirdPerson.current !== 'Idle')
+        {
+            // run/walk velocity
+            const velocity = controlsThirdPerson.walkVelocity;
+
+            // direction with key
+            ease.set(key[1], 0, key[0]).multiplyScalar(velocity * delta);
+
+            // calculate camera direction
+            const angle = unwrapRad(Math.atan2(ease.x, ease.z) + azimuth);
+            rotate.setFromAxisAngle(up, angle);
+
+            // apply camera angle on ease
+            controlsThirdPerson.ease.applyAxisAngle(up, azimuth);
+
+            position.add(ease);
+            camera.position.add(ease);
+
+            group.position.copy(position);
+            group.quaternion.rotateTowards(rotate, controlsThirdPerson.rotateSpeed);
+
+            orbitControls.target.copy(position).add({x: 0, y: 1, z: 0});
+            followGroup.position.copy(position);
+
+            // Move the floor without any limit??
+        }
+
+        if (controllableSkeleton.mixer) controllableSkeleton.mixer.update(delta);
+        orbitControls.update();
+    }
+
+    function unwrapRad(r)
+    {
+        return Math.atan2(Math.sin(r), Math.cos(r));
     }
     //#endregion
 
@@ -227,7 +378,7 @@ function main()
     //#region GUI ANIMATION SKELETON
     function addSkeletonFolder(skel)
     {
-        const skelFolder = animationFolder.addFolder(`Skeleton-${skeletons.length}`);
+        const skelFolder = animationRigFolder.addFolder(`Skeleton-${skeletons.length}`);
         const crossFadeFolder = skelFolder.addFolder('Crossfading');
         const blendWeightsFolder = skelFolder.addFolder('Blend Weights');
 
@@ -244,6 +395,18 @@ function main()
         crossFadeFolder.open();
         blendWeightsFolder.open();
         skelFolder.close();
+    }
+
+    function removeSkeletonFolder()
+    {
+        if (skeletons.length > 1)
+        {
+            const lastSkelFolder = animationRigFolder.folders[animationRigFolder.folders.length - 1];
+            lastSkelFolder.destroy();
+        
+            const skel = skeletons.pop()
+            scene.remove(skel.root);
+        } 
     }
 
     function updateWeightSliders(skel)
@@ -341,6 +504,8 @@ function main()
         {
             skeleton.mixer.update(mixerUpdateDelta);
         }
+
+        updateCharacter(mixerUpdateDelta);
 
         //#region PATH MOVEMENT
         if (rats.length > 0)
