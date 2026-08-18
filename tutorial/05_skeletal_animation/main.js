@@ -1,7 +1,10 @@
 import * as THREE from 'three';
 import * as UTILS from '../../utils.js'
 import * as UTILS_GENERAL from '../utilsGeneral.js';
+import * as UTILS_SKELETON from '../utilsSkeleton.js';
+import * as UTILS_PROCEDURAL from '../utilsProcedural.js';
 import Stats from "three/examples/jsm/libs/stats.module";
+import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { GUI } from 'three/addons/libs/lil-gui.module.min.js';
 
 function main()
@@ -12,6 +15,16 @@ function main()
     camera.position.set(7, 5, 10);
     orbitControls.maxPolarAngle = Math.PI / 2 - 0.05;
     orbitControls.update();
+
+    const environmentLoader = new THREE.TextureLoader();
+    environmentLoader.load('../../resources/sky-sea-march-08-2024.jpg', (environmentTexture) => {
+        environmentTexture.mapping = THREE.EquirectangularReflectionMapping;
+        environmentTexture.colorSpace = THREE.SRGBColorSpace;
+        scene.background = environmentTexture;
+        scene.environment = environmentTexture;
+        scene.environmentIntensity = 1.25;
+        scene.backgroundIntensity = 1.0;
+    });
     //#endregion
 
     //#region LIGHT
@@ -27,89 +40,46 @@ function main()
     //#endregion
 
     //#region MESH
-    const boxWidth = 1;
-    const boxHeight = 1;
-    const boxDepth = 1;
-    const geometry = new THREE.BoxGeometry(boxWidth, boxHeight, boxDepth);
+    const skeletons = [];
+    let rootSkel, animations;
+
+    const generalAnimationSettings = {
+        'add skeleton': () => {
+            const skel = UTILS_SKELETON.createCharacter(scene, rootSkel, animations, [Math.random() * 20 - 10, 0, Math.random() * 20 - 10]);
+            skeletons.push(skel);
+            addSkeletonFolder(skel);
+        },
+        'remove skeleton': () => {
+            removeSkeletonFolder();
+        },  
+    };
     
-    const cube = makeInstance(geometry, 0x44aa88, [0, 1.5, 0]);
+    const gui = new GUI();
+    
+    const animationFolder = gui.addFolder('Animation');
+    const animationRigFolder = animationFolder.addFolder('Rig');
+    animationRigFolder.add(generalAnimationSettings, 'add skeleton');
+    animationRigFolder.add(generalAnimationSettings, 'remove skeleton');
+    animationRigFolder.close();
+    animationFolder.open();
 
-    const times = [0, 1, 2, 3];
-    const positionValues = [
-        -2, 0, 0,
-         0, 2, 0,
-         2, 0, 0,
-        -2, 0, 0,
-    ];
-    const positionTrack = new THREE.VectorKeyframeTrack(
-        '.position',
-        times,
-        positionValues
-    );
+    const gltfLoader = new GLTFLoader();
+    gltfLoader.load('../../resources/skeleton.glb', (gltf) => {
+        rootSkel = gltf.scene;
+        animations = gltf.animations
+        console.log(UTILS_GENERAL.dumpObject(rootSkel).join('\n'));
+    
+        // default first skeleton
+        skeletons.push(UTILS_SKELETON.createCharacter(scene, rootSkel, animations, [0, 0, 0]));
+        addSkeletonFolder(skeletons[0]);
+    });
 
-    const scaleValues = [
-        1, 1, 1,
-        2, 2, 2,
-        1, 1, 1,
-        1, 1, 1,
-    ];
-    const scaleTrack = new THREE.VectorKeyframeTrack(
-        '.scale',
-        times,
-        scaleValues,
-    );
-
-    const q0 = new THREE.Quaternion().setFromEuler(new THREE.Euler(0, 0, 0));
-    const q1 = new THREE.Quaternion().setFromEuler(new THREE.Euler(Math.PI, 0.5 * Math.PI, 0));
-    const q2 = new THREE.Quaternion().setFromEuler(new THREE.Euler(1.5 * Math.PI, Math.PI, 0));
-    const q3 = new THREE.Quaternion().setFromEuler(new THREE.Euler(0, 0, 0));
-    const rotationValues = [
-        q0.x, q0.y, q0.z, q0.w,
-        q1.x, q1.y, q1.z, q1.w,
-        q2.x, q2.y, q2.z, q2.w,
-        q3.x, q3.y, q3.z, q3.w,
-    ]
-    const rotationTrack = new THREE.QuaternionKeyframeTrack(
-        '.quaternion',
-        times,
-        rotationValues,
-    );
-
-    const clip = new THREE.AnimationClip(
-        'CubeKeyframeAnimation',
-        3,
-        [
-            positionTrack,
-            scaleTrack,
-            rotationTrack,
-        ]
-    );
-
-    const mixer = new THREE.AnimationMixer(cube);
-    const action = mixer.clipAction(clip);
-    action.play();
-
-    const plane = new THREE.Mesh( new THREE.PlaneGeometry( 100, 100 ), new THREE.MeshPhongMaterial( { color: 0xcbcbcb, depthWrite: false } ) );
-    plane.rotation.x = - Math.PI / 2;
-    plane.receiveShadow = true;
-    plane.position.set(0, -1, 0);
-    scene.add(plane);
-
-    function makeInstance(geometry, color, position) 
-    {
-        const material = new THREE.MeshPhongMaterial({color});
-        const cube = new THREE.Mesh(geometry, material);
-        cube.castShadow = true;
-        cube.receiveShadow = true;
-        scene.add(cube);
-        cube.position.set(...position);
-        return cube;
-    }
+    gltfLoader.load('../../resources/floor.glb', (gltf) => {
+        UTILS_PROCEDURAL.createCharacter(scene, gltf.scene, [0, 0, 0]);
+    });
     //#endregion
 
     //#region GUI
-    const gui = new GUI();
-
     function updateLight()
     {
         light.target.updateMatrixWorld();
@@ -166,6 +136,62 @@ function main()
     bf.open()
     //#endregion
 
+    //#region GUI ANIMATION SKELETON
+    function addSkeletonFolder(skel)
+    {
+        const skelFolder = animationRigFolder.addFolder(`Skeleton-${skeletons.length}`);
+        const crossFadeFolder = skelFolder.addFolder('Crossfading');
+        const blendWeightsFolder = skelFolder.addFolder('Blend Weights');
+    
+        skelFolder.add(skel.animationSettings, 'show skeleton').onChange((visibility) => skel.helper.visible = visibility);
+    
+        skel.crossFadeControls.push(crossFadeFolder.add(skel.animationSettings, 'from walk to idle'));
+        skel.crossFadeControls.push(crossFadeFolder.add(skel.animationSettings, 'from idle to walk'));
+        crossFadeFolder.add(skel.animationSettings, 'use default duration');
+        crossFadeFolder.add(skel.animationSettings, 'set custom duration', 0, 10, 0.01);
+    
+        blendWeightsFolder.add(skel.animationSettings, 'modify idle weight', 0.0, 1.0, 0.01).listen().onChange((weight) => UTILS_SKELETON.setWeight(skel.idleAction, weight));
+        blendWeightsFolder.add(skel.animationSettings, 'modify walk weight', 0.0, 1.0, 0.01).listen().onChange((weight) => UTILS_SKELETON.setWeight(skel.walkAction, weight));
+    
+        crossFadeFolder.open();
+        blendWeightsFolder.open();
+        skelFolder.close();
+    }
+    
+    function removeSkeletonFolder()
+    {
+        if (skeletons.length > 1)
+        {
+            const lastSkelFolder = animationRigFolder.folders[animationRigFolder.folders.length - 1];
+            lastSkelFolder.destroy();
+            
+            const skel = skeletons.pop()
+            scene.remove(skel.root);
+        } 
+    }
+    
+    function updateWeightSliders(skel)
+    {
+        skel.animationSettings['modify idle weight'] = skel.idleWeight;
+        skel.animationSettings['modify walk weight'] = skel.walkWeight;
+    }
+    
+    function updateCrossFadeControls(skel)
+    {
+        if (skel.idleWeight === 1 && skel.walkWeight === 0)
+        {
+            skel.crossFadeControls[0].disable();
+            skel.crossFadeControls[1].enable();
+        }
+    
+        if (skel.idleWeight === 0 && skel.walkWeight === 1)
+        {
+            skel.crossFadeControls[0].enable();
+            skel.crossFadeControls[1].disable();
+        }
+    }
+    //#endregion
+
     //#region RENDER
     const stats = Stats();
     document.body.appendChild(stats.dom);
@@ -198,7 +224,19 @@ function main()
             fpsTimestamp      = elapsed;
         }
 
-        mixer.update(delta);
+        if (skeletons.length > 0)
+        {
+            skeletons.forEach((skel) =>
+            {
+                skel.idleWeight = skel.idleAction.getEffectiveWeight();
+                skel.walkWeight = skel.walkAction.getEffectiveWeight();
+
+                updateWeightSliders(skel);
+                updateCrossFadeControls(skel);
+
+                skel.mixer.update(delta);
+            })
+        }
 
         orbitControls.update();
         stats.update();
