@@ -19,9 +19,9 @@ export function createCharacter(scene, sourceRoot, position)
 
     scene.add(character);
 
-    const rat = {
+    const char = {
         root: character,
     };
 
-    return rat;
+    return char;
 }
