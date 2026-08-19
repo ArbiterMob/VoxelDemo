@@ -6,15 +6,14 @@ import * as UTILS_PROCEDURAL from '../utilsProcedural.js';
 import Stats from "three/examples/jsm/libs/stats.module";
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { GUI } from 'three/addons/libs/lil-gui.module.min.js';
-import { ThreeMFLoader } from 'three/examples/jsm/Addons.js';
-import { floor } from 'three/tsl';
 
 function main()
 {
     //#region RENDERER, CAMERA, SCENE
     const canvas = document.querySelector('#c');
     const {renderer, scene, camera, orbitControls} = UTILS_GENERAL.createScene(canvas);
-    camera.position.set(7, 5, 10);
+    camera.position.set(3.85, 3, 3.85);
+    orbitControls.target.set(0, 1, 0);
     orbitControls.maxPolarAngle = Math.PI / 2 - 0.05;
     orbitControls.update();
 
@@ -52,21 +51,37 @@ function main()
     //#endregion
 
     //#region MESH
-    let controllableSkeleton;
-    let rootSkel, floor;
+    let controllableSkeleton, chest, hammer;
+    //let floor;
 
     const gltfLoader = new GLTFLoader();
     gltfLoader.load('../../resources/skeleton.glb', (gltf) => {
-        rootSkel = gltf.scene;
-        console.log(UTILS_GENERAL.dumpObject(rootSkel).join('\n'));
+        console.log(UTILS_GENERAL.dumpObject(gltf.scene).join('\n'));
     
-        // default first skeleton
-        controllableSkeleton = UTILS_SKELETON.createCharacter(scene, rootSkel, gltf.animations, [0, 0, 0]);
+        // default first skeletonw
+        controllableSkeleton = UTILS_SKELETON.createSkeleton(scene, gltf.scene, gltf.animations, [0, 0, 0]);
+        hammer = controllableSkeleton.root.getObjectByName('ps1_hammer002');
+        hammer.visible = false;
         group.add(controllableSkeleton.root);
     });
 
+    /*gltfLoader.load('../../resources/hammer.glb', (gltf) => {
+        console.log(UTILS_GENERAL.dumpObject(gltf.scene).join('\n'));
+        console.log(gltf.animations);
+
+        hammer = UTILS_SKELETON.createHammer(scene, gltf.scene, gltf.animations, [0, 0, 0]);
+        group.add(hammer.root);
+    });*/
+
+    gltfLoader.load('../../resources/chest.glb', (gltf) => {
+        console.log(UTILS_GENERAL.dumpObject(gltf.scene).join('\n'));
+        
+        console.log(gltf.animations);
+        chest = UTILS_SKELETON.createChest(scene, gltf.scene, gltf.animations, [4, 0, 6]);
+    });
+
     gltfLoader.load('../../resources/floor.glb', (gltf) => {
-        floor = UTILS_PROCEDURAL.createCharacter(scene, gltf.scene, [0, 0, 0]);
+        /*floor = */UTILS_PROCEDURAL.createCharacter(scene, gltf.scene, [0, 0, 0]);
 
         UTILS_PROCEDURAL.createCharacter(scene, gltf.scene, [-30, 0, 0]);
         UTILS_PROCEDURAL.createCharacter(scene, gltf.scene, [30, 0, 0]);
@@ -81,7 +96,12 @@ function main()
 
     //#region EVENTS
     const controlsThirdPerson = {
-        key: [0, 0],
+        keys: {
+            'forward': false,
+            'backward': false,
+            'left': false,
+            'right': false,
+        },
         ease: new THREE.Vector3(),
         position: new THREE.Vector3(),
         up: new THREE.Vector3(0, 1, 0),
@@ -90,65 +110,98 @@ function main()
         fadeDuration: 0.5,
         //runVelocity: 5,
         walkVelocity: 1.8,
-        rotateSpeed: 0.05,
+        rotateSpeed: 6,//0.05,
         floorDecale: 15,
+
+        nextPosition: new THREE.Vector3(),
+        actualMovement: new THREE.Vector3(),
     };
     
     document.addEventListener('keydown', onKeyDown);
     document.addEventListener('keyup', onKeyUp);
+    document.addEventListener('keypress', onKeyPress);
     
     function onKeyDown(event)
     {
-        const key = controlsThirdPerson.key;
+        const keys = controlsThirdPerson.keys;
         switch (event.code)
         {
-            case 'ArrowUp': case 'KeyW': key[0] = -1; break;
-            case 'ArrowDown': case 'KeyS': key[0] = 1; break;
-            case 'ArrowLeft': case 'KeyA': key[1] = -1; break;
-            case 'ArrowRight': case 'KeyD': key[1] = 1; break;
+            case 'ArrowUp': case 'KeyW': keys.forward = true; break;
+            case 'ArrowDown': case 'KeyS': keys.backward = true; break;
+            case 'ArrowLeft': case 'KeyA': keys.left= true; break;
+            case 'ArrowRight': case 'KeyD': keys.right = true; break;
         }
     }
     
     function onKeyUp(event)
     {
-        const key = controlsThirdPerson.key;
+        const keys = controlsThirdPerson.keys;
         switch (event.code)
         {
-            case 'ArrowUp': case 'KeyW': key[0] = key[0] < 0 ? 0 : key[0]; break;
-            case 'ArrowDown': case 'KeyS': key[0] = key[0] > 0 ? 0 : key[0]; break;
-            case 'ArrowLeft': case 'KeyA': key[1] = key[1] < 0 ? 0 : key[1]; break;
-            case 'ArrowRight': case 'KeyD': key[1] = key[1] > 0 ? 0 : key[1]; break;
+            case 'ArrowUp': case 'KeyW': keys.forward = false; break;
+            case 'ArrowDown': case 'KeyS': keys.backward = false; break;
+            case 'ArrowLeft': case 'KeyA': keys.left= false; break;
+            case 'ArrowRight': case 'KeyD': keys.right = false; break;
         }
     } 
+
+    function onKeyPress(event)
+    {
+        if (event.code === 'KeyE')
+        {
+            /*console.log('%%%%%');
+            console.log('KeyE', chest, controllableSkeleton);
+            console.log(UTILS_GENERAL.calculateDistance(chest.root.position, group.position));
+            console.log(chest.isOpen);*/
+
+            if (chest.isOpen === false && UTILS_GENERAL.calculateDistance(chest.root.position, group.position) <= 1.8)
+            {
+                chest.isOpen = true;
+                chest.openAction.reset();
+                UTILS_SKELETON.setWeight(chest.openAction, 1);
+                chest.openAction.play();
+
+                hammer.visible = true;
+            }
+        }
+    }
     
     function updateCharacter(delta)
     {
         const fade = controlsThirdPerson.fadeDuration;
-        const key = controlsThirdPerson.key;
+        const keys = controlsThirdPerson.keys;
         const up = controlsThirdPerson.up;
         const ease = controlsThirdPerson.ease;
         const rotate = controlsThirdPerson.rotate;
         const position = controlsThirdPerson.position;
         const azimuth = orbitControls.getAzimuthalAngle();
+        const nextPosition = controlsThirdPerson.nextPosition;
+        const actualMovement = controlsThirdPerson.actualMovement;
+
+        const vertical = - (Number(keys.forward) - Number(keys.backward));
+        const horizontal = Number(keys.right) - Number(keys.left);
     
-        const active = key[0] === 0 && key[1] === 0 ? false : true;
+        //const active = !Object.values(keys).every((val) => val === false);
+        const active = vertical !== 0 || horizontal !== 0;
         const play = active ? 'Walk' : 'Idle';
     
         // change animation
-        if (controlsThirdPerson.current != play)
+        if (controlsThirdPerson.current !== play)
         {
-            const current = controllableSkeleton.actions[play];
-            const old = controllableSkeleton.actions[controlsThirdPerson.current];
+            const nextAction = controllableSkeleton.actions[play];
+            const previousAction = controllableSkeleton.actions[controlsThirdPerson.current];
             controlsThirdPerson.current = play;
     
-            current.reset();
+            /*current.reset();
             current.weight = 1.0;
             current.stopFading();
             old.stopFading();
             if (play !== 'Idle') current.time = old.time * (current.getClip().duration / old.getClip().duration);
             old._scheduleFading(fade, old.getEffectiveWeight(), 0);
             current._scheduleFading(fade, current.getEffectiveWeight(), 1);
-            current.play();
+            current.play();*/
+
+            UTILS_SKELETON.prepareCrossFade(controllableSkeleton, previousAction, nextAction, fade, false);
         }
     
         // move object
@@ -157,18 +210,17 @@ function main()
             // run/walk velocity
             const velocity = controlsThirdPerson.walkVelocity;
     
-            // direction with key
-            ease.set(key[1], 0, key[0]).multiplyScalar(velocity * delta);
+            ease.set(horizontal, 0, vertical);
+            if (ease.lengthSq() > 0)
+                ease.normalize().multiplyScalar(velocity * delta);
     
             // calculate camera direction
-            const angle = unwrapRad(Math.atan2(ease.x, ease.z) + azimuth);
+            const angle = UTILS_GENERAL.unwrapRad(Math.atan2(ease.x, ease.z) + azimuth);
             rotate.setFromAxisAngle(up, angle);
     
             // apply camera angle on ease
-            controlsThirdPerson.ease.applyAxisAngle(up, azimuth);
+            ease.applyAxisAngle(up, azimuth);
     
-            const nextPosition = new THREE.Vector3();
-            const actualMovement = new THREE.Vector3();
             nextPosition.copy(position).add(ease);
             nextPosition.x = THREE.MathUtils.clamp(nextPosition.x, -40, 40);
             nextPosition.z = THREE.MathUtils.clamp(nextPosition.z, -40, 40);
@@ -181,7 +233,7 @@ function main()
     
     
             group.position.copy(position);
-            group.quaternion.rotateTowards(rotate, controlsThirdPerson.rotateSpeed);
+            group.quaternion.rotateTowards(rotate, controlsThirdPerson.rotateSpeed * delta);
     
             orbitControls.target.copy(position).add({x: 0, y: 1, z: 0});
             followGroup.position.copy(position);
@@ -196,13 +248,8 @@ function main()
             }*/
         }
     
-        if (controllableSkeleton) controllableSkeleton.mixer.update(delta);
+        controllableSkeleton.mixer.update(delta);
         orbitControls.update();
-    }
-    
-    function unwrapRad(r)
-    {
-        return Math.atan2(Math.sin(r), Math.cos(r));
     }
     //#endregion
 
@@ -308,7 +355,13 @@ function main()
             fpsTimestamp      = elapsed;
         }
 
-        updateCharacter(delta);
+        if (controllableSkeleton)
+            updateCharacter(delta);
+
+        if (chest)
+            chest.mixer.update(delta);
+
+        //console.log(camera.position);
 
         orbitControls.update();
         stats.update();

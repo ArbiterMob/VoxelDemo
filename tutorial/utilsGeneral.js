@@ -95,3 +95,17 @@ export function dumpObject(obj, lines = [], isLast = true, prefix = '')
     });
     return lines;
 }
+
+export function unwrapRad(r)
+{
+    return Math.atan2(Math.sin(r), Math.cos(r));
+}
+
+export function calculateDistance(pos1, pos2)
+{
+    const x = pos1.x - pos2.x;
+    const y = pos1.y - pos2.y;
+    const z = pos1.z - pos2.z;
+
+    return Math.sqrt(x**2 + y**2 + z**2);
+}

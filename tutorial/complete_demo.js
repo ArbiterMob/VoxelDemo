@@ -52,7 +52,7 @@ function main()
 
     const generalAnimationSettings = {
         'add skeleton': () => {
-            const skel = UTILS_SKELETON.createCharacter(scene, rootSkel, animations, [Math.random() * 5 + 1, 0, Math.random() * - 5 + 1]);
+            const skel = UTILS_SKELETON.createSkeleton(scene, rootSkel, animations, [Math.random() * 5 + 1, 0, Math.random() * - 5 + 1]);
             skeletons.push(skel);
             addSkeletonFolder(skel);
         },
@@ -96,7 +96,7 @@ function main()
         group.add(controllableSkeleton.root);
 
         // default first skeleton
-        skeletons.push(UTILS_SKELETON.createCharacter(scene, rootSkel, animations, [0, 0, -2]));
+        skeletons.push(UTILS_SKELETON.createSkeleton(scene, rootSkel, animations, [0, 0, -2]));
         addSkeletonFolder(skeletons[0]);
     });
 
@@ -409,7 +409,7 @@ function main()
     function render() {
 
         timer.update();
-        const time = performance.now();
+        const elapsed = timer.getElapsed();
         frameCount++;
 
         if (skeletons.length > 0)
@@ -424,20 +424,22 @@ function main()
             })
         }
 
-        if (UTILS_GENERAL.resizeRendererToDisplaySize(renderer)) {
+        if (UTILS_GENERAL.resizeRendererToDisplaySize(renderer))
+        {
             const canvas = renderer.domElement;
             
             camera.aspect = canvas.clientWidth / canvas.clientHeight;
             camera.updateProjectionMatrix();
         }
 
-        if (time - fpsTimestamp >= 500) {
+        if (elapsed - fpsTimestamp >= 0.5)
+        {
             bench.fps         = Math.round(frameCount * 2);
             bench.drawCalls   = renderer.info.render.calls;
             bench.triangles   = renderer.info.render.triangles;
             bench.geometries  = renderer.info.memory.geometries;
             frameCount        = 0;
-            fpsTimestamp      = time;
+            fpsTimestamp      = elapsed;
         }
 
         let mixerUpdateDelta = timer.getDelta();
@@ -450,7 +452,7 @@ function main()
         //#region PATH MOVEMENT
         if (rats.length > 0)
         {
-            const pathTime = time * .00005;
+            const pathTime = elapsed * 0.05;
             const targetOffset = 0.01;
             rats.forEach((rat, ndx) => {
                 // a number between 0 and 1 to evenly space the rats

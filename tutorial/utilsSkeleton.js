@@ -1,7 +1,7 @@
 import * as THREE from 'three';
 import * as SkeletonUtils from 'three/addons/utils/SkeletonUtils.js';
 
-export function createCharacter(scene, sourceRoot, animations, position) 
+export function createSkeleton(scene, sourceRoot, animations, position) 
 {
     const character = SkeletonUtils.clone(sourceRoot);
     character.position.set(position[0], position[1], position[2]);
@@ -64,21 +64,103 @@ export function createCharacter(scene, sourceRoot, animations, position)
     return skel;
 }
 
-export function prepareCrossFade(skel, startAction, endAction, defaultDuration)
+export function createHammer(scene, sourceRoot, animations, position) 
+{
+    const character = SkeletonUtils.clone(sourceRoot);
+    character.position.set(position[0], position[1], position[2]);
+
+    character.traverse((child) => {
+        if (child.isMesh) 
+        {
+            child.castShadow = true;
+            child.receiveShadow = true;
+            if (!child.geometry.attributes.normal)
+            {
+                child.geometry.computeVertexNormals();
+            }
+        }
+    });
+
+    scene.add(character);
+
+    const characterMixer = new THREE.AnimationMixer(character);
+    const idleAction = characterMixer.clipAction(animations[0]);
+    const walkAction = characterMixer.clipAction(animations[1]);
+
+    const hammer = {
+        root: character,
+        mixer: characterMixer,
+        idleAction,
+        walkAction,
+    };
+
+    setWeight(idleAction, 1);
+    setWeight(walkAction, 0);
+    idleAction.play();
+    walkAction.play();
+
+    return hammer;
+}
+
+export function createChest(scene, sourceRoot, animations, position) 
+{
+    const character = sourceRoot.clone();
+    character.position.set(position[0], position[1], position[2]);
+
+    character.traverse((child) => {
+        if (child.isMesh) 
+        {
+            child.castShadow = true;
+            child.receiveShadow = true;
+            if (!child.geometry.attributes.normal)
+            {
+                child.geometry.computeVertexNormals();
+            }
+        }
+    });
+
+    scene.add(character);
+
+    const characterMixer = new THREE.AnimationMixer(character);
+    const openAction = characterMixer.clipAction(animations[0]);
+    openAction.setLoop(THREE.LoopOnce, 1);
+    openAction.clampWhenFinished = true;
+
+    const chest = {
+        root: character,
+        mixer: characterMixer,
+        openAction,
+        isOpen: false,
+    };
+
+    setWeight(openAction, 1);
+
+    return chest;
+}
+
+export function prepareCrossFade(skel, startAction, endAction, defaultDuration, synch = true)
 {
     const duration = setCrossFadeDuration(skel.animationSettings, defaultDuration);
 
     skel.idleAction.paused = false;
     skel.walkAction.paused = false;
 
-    if (startAction === skel.idleAction)
+    if (synch === true)
     {
-        executeCrossFade(startAction, endAction, duration);
+        if (startAction === skel.idleAction)
+        {
+            executeCrossFade(startAction, endAction, duration);
+        }
+        else
+        {
+            synchronizeCrossFade(skel.mixer, startAction, endAction, duration);
+        }
     }
     else 
     {
-        synchronizeCrossFade(skel.mixer, startAction, endAction, duration);
+        executeCrossFade(startAction, endAction, duration);
     }
+    
 }
 
 export function setCrossFadeDuration(animationSettings, defaultDuration)

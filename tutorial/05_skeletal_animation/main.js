@@ -45,7 +45,7 @@ function main()
 
     const generalAnimationSettings = {
         'add skeleton': () => {
-            const skel = UTILS_SKELETON.createCharacter(scene, rootSkel, animations, [Math.random() * 20 - 10, 0, Math.random() * 20 - 10]);
+            const skel = UTILS_SKELETON.createSkeleton(scene, rootSkel, animations, [Math.random() * 20 - 10, 0, Math.random() * 20 - 10]);
             skeletons.push(skel);
             addSkeletonFolder(skel);
         },
@@ -70,7 +70,7 @@ function main()
         console.log(UTILS_GENERAL.dumpObject(rootSkel).join('\n'));
     
         // default first skeleton
-        skeletons.push(UTILS_SKELETON.createCharacter(scene, rootSkel, animations, [0, 0, 0]));
+        skeletons.push(UTILS_SKELETON.createSkeleton(scene, rootSkel, animations, [0, 0, 0]));
         addSkeletonFolder(skeletons[0]);
     });
 
