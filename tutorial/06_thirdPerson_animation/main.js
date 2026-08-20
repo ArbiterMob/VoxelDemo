@@ -12,89 +12,239 @@ function main()
     //#region RENDERER, CAMERA, SCENE
     const canvas = document.querySelector('#c');
     const {renderer, scene, camera, orbitControls} = UTILS_GENERAL.createScene(canvas);
-    camera.position.set(3.85, 3, 3.85);
-    orbitControls.target.set(0, 1, 0);
+
+    const characterInitialPosition = new THREE.Vector3(2, 0, 2);
+
+    camera.position.set(-1.85, 3, -1.85);
+    orbitControls.target.copy(characterInitialPosition).add({x: 0, y: 1, z: 0});
     orbitControls.maxPolarAngle = Math.PI / 2 - 0.05;
+    orbitControls.minPolarAngle = 0.8;
+    orbitControls.minDistance = 1;
+    orbitControls.maxDistance = 5;
     orbitControls.update();
 
-    const environmentLoader = new THREE.TextureLoader();
-    environmentLoader.load('../../resources/sky-sea-march-08-2024.jpg', (environmentTexture) => {
-        environmentTexture.mapping = THREE.EquirectangularReflectionMapping;
-        environmentTexture.colorSpace = THREE.SRGBColorSpace;
-        scene.background = environmentTexture;
-        scene.environment = environmentTexture;
-        scene.environmentIntensity = 1.25;
-        scene.backgroundIntensity = 1.0;
-    });
+    scene.background = new THREE.Color('black');
 
     const group = new THREE.Group();
+    group.position.copy(characterInitialPosition);
     const followGroup = new THREE.Group();
     scene.add(group);
     scene.add(followGroup);
     //#endregion
 
-    //#region LIGHT, FOG
-    const {light, ambientlight, lightHelper, shadowCameraHelper} = UTILS_GENERAL.createLight();
-    
-    light.shadow.camera.far = 25;
+    //#region GUI
+    const gui = new GUI();
+    const guiState = { shadows: true, fog: true };
+    const lightFolder = gui.addFolder('Light');
+    const shadowFolder = lightFolder.addFolder('Shadow Camera');
 
-    followGroup.add(light);
-    followGroup.add(light.target);
-    scene.add(ambientlight);
-    scene.add(lightHelper);
-    scene.add(shadowCameraHelper);
+    function updateLight()
+    {
+        light.target.updateMatrixWorld();
+        lightHelper.update();
 
-    /*scene.background = new THREE.Color( 0x5e5d5d );
-    const sceneFog = new THREE.Fog(0x5e5d5d, 0.1, 50);
-    sceneFog.far = 24;
-    scene.fog = sceneFog;*/
+        light.shadow.camera.updateProjectionMatrix();
+        shadowCameraHelper.update();
+    }
+    //updateLight();
+
+    function updateCamera() {
+        camera.updateProjectionMatrix();
+    }
+
+    function createLightFolder()
+    {
+        lightHelper = new THREE.DirectionalLightHelper(light);
+        lightHelper.visible = false;
+        shadowCameraHelper = new THREE.CameraHelper(light.shadow.camera);
+        shadowCameraHelper.visible = false;
+        scene.add(lightHelper);
+        scene.add(shadowCameraHelper);
+
+
+        lightFolder.add(lightHelper, 'visible').name('showHelper');
+        lightFolder.addColor(new UTILS.ColorGUIHelper(light, 'color'), 'value').name('color');
+        lightFolder.add(light, 'intensity', 0, 5, 0.01);
+        UTILS.makeXYZGUI(lightFolder, light.position, 'position', updateLight);
+        UTILS.makeXYZGUI(lightFolder, light.target.position, 'target', updateLight);
+        lightFolder.close();
+
+        shadowFolder.add(shadowCameraHelper, 'visible').name('showHelper');
+        shadowFolder.add(guiState, 'shadows').name('Shadows on').onChange((v) => {
+            renderer.shadowMap.enabled = v;
+            scene.traverse((obj) => { if (obj.isMesh) obj.material.needsUpdate = true; });
+        });
+        shadowFolder.add(new UTILS.DimensionGUIHelper(light.shadow.camera, 'left', 'right'), 'value', 1, 300)
+            .name('width').onChange(updateLight);
+        shadowFolder.add(new UTILS.DimensionGUIHelper(light.shadow.camera, 'bottom', 'top'), 'value', 1, 300)
+            .name('height').onChange(updateLight);
+        const shadowCameraMinMaxGUIHelper = new UTILS.MinMaxGUIHelper(light.shadow.camera, 'near', 'far', 0.1);
+        shadowFolder.add(shadowCameraMinMaxGUIHelper, 'min', 0.1, 50, 0.1).name('near').onChange(updateLight);
+        shadowFolder.add(shadowCameraMinMaxGUIHelper, 'max', 0.1, 1000, 0.1).name('far').onChange(updateLight);
+        shadowFolder.add(light.shadow.camera, 'zoom', 0.01, 1.5, 0.01).onChange(updateLight);
+        shadowFolder.close();
+
+        updateLight();
+    }
+
+
+    const cameraFolder = gui.addFolder('Camera');
+    const freeCameraFolder = cameraFolder.addFolder('Free Camera');
+    const freeCameraMinMaxGUIHelper = new UTILS.MinMaxGUIHelper(camera, 'near', 'far', 0.1);
+    freeCameraFolder.add(freeCameraMinMaxGUIHelper, 'min', 0.1, 50, 0.1).name('near').onChange(updateCamera);
+    freeCameraFolder.add(freeCameraMinMaxGUIHelper, 'max', 0.1, 1000, 0.1).name('far').onChange(updateCamera);
+    cameraFolder.close();
+
+    const bench = { fps: 0, drawCalls: 0, triangles: 0, geometries: 0 }
+    const bf = gui.addFolder('Renderer stats')
+    bf.add(bench, 'fps').listen().disable()
+    bf.add(bench, 'drawCalls').name('draw calls').listen().disable()
+    bf.add(bench, 'triangles').listen().disable()
+    bf.add(bench, 'geometries').listen().disable()
+    bf.open()
     //#endregion
 
-    //#region MESH
+    //#region SKELETON
     let controllableSkeleton, chest, hammer;
-    //let floor;
 
     const gltfLoader = new GLTFLoader();
     gltfLoader.load('../../resources/skeleton.glb', (gltf) => {
         console.log(UTILS_GENERAL.dumpObject(gltf.scene).join('\n'));
+        console.log(gltf.animations);
     
-        // default first skeletonw
+        // default first skeleton
         controllableSkeleton = UTILS_SKELETON.createSkeleton(scene, gltf.scene, gltf.animations, [0, 0, 0]);
         hammer = controllableSkeleton.root.getObjectByName('ps1_hammer002');
         hammer.visible = false;
         group.add(controllableSkeleton.root);
     });
+    //#endregion
 
-    /*gltfLoader.load('../../resources/hammer.glb', (gltf) => {
+    //#region BATS, LIGHT
+    let light, lightHelper, shadowCameraHelper;
+    let bat;
+    const bats = [];
+
+    const controlPointsBat = [
+        [1.000000, 0.000000, 0.000000],
+        [1.000000, 0.000000, 28.000000], 
+        [13.000000, 0.000000, 28.000000],
+        [13.000000, 0.000000, 14.000000],
+        [28.000000, 0.000000, 14.000000],
+        [28.000000, 0.000000, 28.000000],
+        [28.000000, 0.000000, 28.000000],
+        [15.000000, 0.000000, 28.000000],
+        [15.000000, 0.000000, 0.000000],
+        [28.000000, 0.000000, 0.000000],
+        [28.000000, 0.000000, 13.000000],
+        [2.000000, 0.000000, 13.000000],
+        [2.000000, 0.000000, 0.000000],
+        [13.000000, 0.000000, 0.000000],
+        [13.000000, 0.000000, 12.000000],
+        [3.000000, 0.000000, 12.000000],
+        [3.000000, 0.000000, 0.000000],
+        [1.000000, 0.000000, 0.000000],
+    ];
+
+    const curveBat = UTILS_PROCEDURAL.createCurve(controlPointsBat);
+
+    gltfLoader.load('../../resources/bat1.glb', (gltf) => {
         console.log(UTILS_GENERAL.dumpObject(gltf.scene).join('\n'));
-        console.log(gltf.animations);
+        console.log(gltf.animations)
 
-        hammer = UTILS_SKELETON.createHammer(scene, gltf.scene, gltf.animations, [0, 0, 0]);
-        group.add(hammer.root);
-    });*/
+        bat = UTILS_SKELETON.createBat(scene, gltf.scene, gltf.animations, [0, 0, 0]);
+        bats.push(bat);
 
-    gltfLoader.load('../../resources/chest.glb', (gltf) => {
-        console.log(UTILS_GENERAL.dumpObject(gltf.scene).join('\n'));
-        
-        console.log(gltf.animations);
-        chest = UTILS_SKELETON.createChest(scene, gltf.scene, gltf.animations, [4, 0, 6]);
+        const bat2 = UTILS_SKELETON.createBat(scene, gltf.scene, gltf.animations, [0, 0, 0]);
+        bats.push(bat2);
+
+        light = bat.light;
+        createLightFolder();
     });
 
-    gltfLoader.load('../../resources/floor.glb', (gltf) => {
-        /*floor = */UTILS_PROCEDURAL.createCharacter(scene, gltf.scene, [0, 0, 0]);
+    const ambientlight = new THREE.AmbientLight(0xFFFFFF, 0.7);
+    scene.add(ambientlight);
+    //#endregion
 
-        UTILS_PROCEDURAL.createCharacter(scene, gltf.scene, [-30, 0, 0]);
-        UTILS_PROCEDURAL.createCharacter(scene, gltf.scene, [30, 0, 0]);
-        UTILS_PROCEDURAL.createCharacter(scene, gltf.scene, [0, 0, -30]);
-        UTILS_PROCEDURAL.createCharacter(scene, gltf.scene, [0, 0, +30]);
-        UTILS_PROCEDURAL.createCharacter(scene, gltf.scene, [-30, 0, -30]);
-        UTILS_PROCEDURAL.createCharacter(scene, gltf.scene, [+30, 0, +30]);
-        UTILS_PROCEDURAL.createCharacter(scene, gltf.scene, [+30, 0, -30]);
-        UTILS_PROCEDURAL.createCharacter(scene, gltf.scene, [-30, 0, +30]);
+    //#region RAT
+    const rats = [];
+    const curveRatPosition = [
+        [16, 0, 11],
+        [3.57143, 0, 14.8571],
+        [12, 0, 20.5],
+        [24, 0, 10.5],
+    ]
+    const curveRatRotation = [
+        [0, 0, 0],
+        [0, - 0.5 * Math.PI, 0],
+        [0, - Math.PI, 0],
+        [0, - Math.PI, 0],
+    ]
+
+    const controlPointsRat = [
+        [-2.000000, 0.000000, 0.000000],
+        [-1.000000, 0.000000, 0.000000], 
+        [0.000000, 0.000000, 0.000000],
+        [1.000000, 0.000000, 0.000000],
+        [2.000000, 0.000000, 0.000000],
+        [2.000000, 0.000000, -3.000000],
+        [-4.000000, 0.000000, -3.000000],
+        [-4.000000, 0.000000, 2.000000],
+        [-1.000000, 0.000000, 2.000000],
+        [-1.000000, 0.000000, -6.000000],
+        [3.000000, 0.000000, -6.000000],
+        [3.000000, 0.000000, -8.000000],
+        [-2.000000, 0.000000, -8.000000],
+    ];
+
+    const curveRat = UTILS_PROCEDURAL.createCurve(controlPointsRat);
+    const curveRats = [];
+    const curveRatObjects = [];
+
+    gltfLoader.load('../../resources/rat.glb', (gltf) => {
+        console.log(UTILS_GENERAL.dumpObject(gltf.scene).join('\n'));
+
+        for (let i = 0; i < curveRatPosition.length; i++)
+        {
+            const rat = UTILS_PROCEDURAL.createCharacter(scene, gltf.scene, [0, 0, 0])
+            rat.isDead = false;
+            rats.push(rat);
+
+            const curve = curveRat.curve.clone();
+            const curveObject = curveRat.curveObject.clone();
+            curveObject.position.set(...curveRatPosition[i]);
+            curveObject.rotation.set(...curveRatRotation[i]);
+
+            curveRats.push(curve);
+            curveRatObjects.push(curveObject);
+            scene.add(curveObject);
+            curveObject.visible = false;
+        }
     });
     //#endregion
 
-    //#region EVENTS
+    //#region MISC MESH
+    gltfLoader.load('../../resources/chest.glb', (gltf) => {
+        console.log(UTILS_GENERAL.dumpObject(gltf.scene).join('\n'));
+        console.log(gltf.animations);
+
+        chest = UTILS_SKELETON.createChest(scene, gltf.scene, gltf.animations, [4, 0, 6]);
+    });
+
+    gltfLoader.load('../../resources/floor1.glb', (gltf) => {
+        console.log(UTILS_GENERAL.dumpObject(gltf.scene).join('\n'));
+
+        UTILS_PROCEDURAL.createCharacter(scene, gltf.scene, [0, 0, 0], true);
+    });
+    
+    gltfLoader.load('../../resources/paintings.glb', (gltf) => {
+        console.log(UTILS_GENERAL.dumpObject(gltf.scene).join('\n'));
+
+        UTILS_PROCEDURAL.createCharacter(scene, gltf.scene, [0, 0, 0]);
+    });
+    //#endregion
+
+    //#region EVENTS THIRD PERSON
     const controlsThirdPerson = {
         keys: {
             'forward': false,
@@ -103,7 +253,7 @@ function main()
             'right': false,
         },
         ease: new THREE.Vector3(),
-        position: new THREE.Vector3(),
+        position: characterInitialPosition,
         up: new THREE.Vector3(0, 1, 0),
         rotate: new THREE.Quaternion(),
         current: 'Idle',
@@ -163,6 +313,18 @@ function main()
 
                 hammer.visible = true;
             }
+
+            if (chest.isOpen === true)
+            {
+                rats.forEach((rat) => {
+                    if(!rat.isDead && UTILS_GENERAL.calculateDistance(rat.root.position, group.position) <= 1.0)
+                    {
+                        rat.isDead = true;
+                        rat.root.visible = false;
+                        console.log('killed a rat');
+                    }
+                });
+            }
         }
     }
     
@@ -191,15 +353,6 @@ function main()
             const nextAction = controllableSkeleton.actions[play];
             const previousAction = controllableSkeleton.actions[controlsThirdPerson.current];
             controlsThirdPerson.current = play;
-    
-            /*current.reset();
-            current.weight = 1.0;
-            current.stopFading();
-            old.stopFading();
-            if (play !== 'Idle') current.time = old.time * (current.getClip().duration / old.getClip().duration);
-            old._scheduleFading(fade, old.getEffectiveWeight(), 0);
-            current._scheduleFading(fade, current.getEffectiveWeight(), 1);
-            current.play();*/
 
             UTILS_SKELETON.prepareCrossFade(controllableSkeleton, previousAction, nextAction, fade, false);
         }
@@ -237,90 +390,11 @@ function main()
     
             orbitControls.target.copy(position).add({x: 0, y: 1, z: 0});
             followGroup.position.copy(position);
-    
-            // Move the floor without any limit
-            /*if (floor.root)
-            {
-                const dx = (position.x - floor.root.position.x);
-                const dz = (position.z - floor.root.position.z);
-                if (Math.abs(dx) > controlsThirdPerson.floorDecale) floor.root.position.x += dx;
-                if (Math.abs(dz) > controlsThirdPerson.floorDecale) floor.root.position.z += dz;
-            }*/
         }
     
         controllableSkeleton.mixer.update(delta);
         orbitControls.update();
     }
-    //#endregion
-
-    //#region GUI
-    function updateLight()
-    {
-        light.target.updateMatrixWorld();
-        lightHelper.update();
-
-        light.shadow.camera.updateProjectionMatrix();
-        shadowCameraHelper.update();
-    }
-    updateLight();
-
-    function updateCamera() {
-        camera.updateProjectionMatrix();
-    }
-
-    const gui = new GUI();
-
-    const guiState = { shadows: true, fog: true };
-
-    const lightFolder = gui.addFolder('Light');
-    lightFolder.add(lightHelper, 'visible').name('showHelper');
-    lightFolder.addColor(new UTILS.ColorGUIHelper(light, 'color'), 'value').name('color');
-    lightFolder.add(light, 'intensity', 0, 5, 0.01);
-    UTILS.makeXYZGUI(lightFolder, light.position, 'position', updateLight);
-    UTILS.makeXYZGUI(lightFolder, light.target.position, 'target', updateLight);
-    lightFolder.close();
-
-    const shadowFolder = lightFolder.addFolder('Shadow Camera');
-    shadowFolder.add(shadowCameraHelper, 'visible').name('showHelper');
-    shadowFolder.add(guiState, 'shadows').name('Shadows on').onChange((v) => {
-        renderer.shadowMap.enabled = v;
-        scene.traverse((obj) => { if (obj.isMesh) obj.material.needsUpdate = true; });
-    });
-    shadowFolder.add(new UTILS.DimensionGUIHelper(light.shadow.camera, 'left', 'right'), 'value', 1, 300)
-        .name('width').onChange(updateLight);
-    shadowFolder.add(new UTILS.DimensionGUIHelper(light.shadow.camera, 'bottom', 'top'), 'value', 1, 300)
-        .name('height').onChange(updateLight);
-    const shadowCameraMinMaxGUIHelper = new UTILS.MinMaxGUIHelper(light.shadow.camera, 'near', 'far', 0.1);
-    shadowFolder.add(shadowCameraMinMaxGUIHelper, 'min', 0.1, 50, 0.1).name('near').onChange(updateLight);
-    shadowFolder.add(shadowCameraMinMaxGUIHelper, 'max', 0.1, 1000, 0.1).name('far').onChange(updateLight);
-    shadowFolder.add(light.shadow.camera, 'zoom', 0.01, 1.5, 0.01).onChange(updateLight);
-    shadowFolder.close();
-
-    const cameraFolder = gui.addFolder('Camera');
-    const freeCameraFolder = cameraFolder.addFolder('Free Camera');
-    const freeCameraMinMaxGUIHelper = new UTILS.MinMaxGUIHelper(camera, 'near', 'far', 0.1);
-    freeCameraFolder.add(freeCameraMinMaxGUIHelper, 'min', 0.1, 50, 0.1).name('near').onChange(updateCamera);
-    freeCameraFolder.add(freeCameraMinMaxGUIHelper, 'max', 0.1, 1000, 0.1).name('far').onChange(updateCamera);
-    cameraFolder.close();
-
-    /*const fogFolder = gui.addFolder('Fog');
-    fogFolder.add(guiState, 'fog').name('Fog on').onChange((v) => {
-        scene.fog = v ? sceneFog : null;
-        scene.traverse((obj) => { if (obj.isMesh) obj.material.needsUpdate = true; });
-    });
-    const fogGUIHelper = new UTILS.FogGUIHelper(sceneFog, scene.background);
-    fogFolder.add(fogGUIHelper, 'near', 1, 50).listen();
-    fogFolder.add(fogGUIHelper, 'far', 1, 50).listen();
-    fogFolder.addColor(fogGUIHelper, 'color');
-    fogFolder.close();*/
-
-    const bench = { fps: 0, drawCalls: 0, triangles: 0, geometries: 0 }
-    const bf = gui.addFolder('Renderer stats')
-    bf.add(bench, 'fps').listen().disable()
-    bf.add(bench, 'drawCalls').name('draw calls').listen().disable()
-    bf.add(bench, 'triangles').listen().disable()
-    bf.add(bench, 'geometries').listen().disable()
-    bf.open()
     //#endregion
 
     //#region RENDER
@@ -361,7 +435,24 @@ function main()
         if (chest)
             chest.mixer.update(delta);
 
-        //console.log(camera.position);
+        if (bat)
+        {
+            UTILS_PROCEDURAL.updateObjectsOnCurve(curveBat.curve, curveBat.curveObject, bats.map(obj => obj.root), elapsed, 0.007);
+            
+            bats.forEach((bat) => {
+                bat.mixer.update(delta);
+                bat.light.target.position.set(bat.root.position.x, 0, bat.root.position.z);
+                bat.light.target.updateMatrixWorld();
+            });
+        }
+
+        if (rats.length === curveRatPosition.length)
+        {
+            rats.forEach((rat, ndx) => {
+                if (!rat.isDead)
+                    UTILS_PROCEDURAL.updateObjectsOnCurve(curveRats[ndx], curveRatObjects[ndx], [rat.root], elapsed, 0.05);
+            })
+        }
 
         orbitControls.update();
         stats.update();

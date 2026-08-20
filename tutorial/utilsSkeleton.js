@@ -15,6 +15,11 @@ export function createSkeleton(scene, sourceRoot, animations, position)
             {
                 child.geometry.computeVertexNormals();
             }
+
+            child.material.transparent = true;
+            //child.material.opacity = 0.5;
+            child.material.blending = THREE.NormalBlending;
+            child.material.needsUpdate = true;
         }
     });
 
@@ -64,7 +69,7 @@ export function createSkeleton(scene, sourceRoot, animations, position)
     return skel;
 }
 
-export function createHammer(scene, sourceRoot, animations, position) 
+export function createBat(scene, sourceRoot, animations, position) 
 {
     const character = SkeletonUtils.clone(sourceRoot);
     character.position.set(position[0], position[1], position[2]);
@@ -84,22 +89,37 @@ export function createHammer(scene, sourceRoot, animations, position)
     scene.add(character);
 
     const characterMixer = new THREE.AnimationMixer(character);
-    const idleAction = characterMixer.clipAction(animations[0]);
-    const walkAction = characterMixer.clipAction(animations[1]);
+    const leftWingAction = characterMixer.clipAction(animations[0]);
+    const rightWingAction = characterMixer.clipAction(animations[1]);
 
-    const hammer = {
+    const batLight = character.getObjectByName('Light');
+    batLight.intensity = 50;
+    batLight.castShadow = true;
+            
+    batLight.shadow.camera.left = -30;
+    batLight.shadow.camera.right = 30;
+    batLight.shadow.camera.top = 30;
+    batLight.shadow.camera.bottom = -30;
+    batLight.shadow.camera.near = 0.1;
+    batLight.shadow.camera.far = 5;
+    batLight.shadow.mapSize.width = 1024;
+    batLight.shadow.mapSize.height = 1024;
+            
+    batLight.shadow.bias = -0.0001;
+    batLight.shadow.normalBias = 0.05;
+
+    const bat = {
         root: character,
         mixer: characterMixer,
-        idleAction,
-        walkAction,
+        light: batLight,
     };
 
-    setWeight(idleAction, 1);
-    setWeight(walkAction, 0);
-    idleAction.play();
-    walkAction.play();
+    setWeight(leftWingAction, 1);
+    setWeight(rightWingAction, 1);
+    leftWingAction.play();
+    rightWingAction.play();
 
-    return hammer;
+    return bat;
 }
 
 export function createChest(scene, sourceRoot, animations, position) 

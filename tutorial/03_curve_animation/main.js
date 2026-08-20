@@ -76,50 +76,24 @@ function main()
     //#endregion
 
     //#region CURVE
-    let curve;
-    let curveObject;
+    const controlPointsRat = [
+        [-2.000000, 0.000000, 0.000000],
+        [-1.000000, 0.000000, 0.000000], 
+        [0.000000, 0.000000, 0.000000],
+        [1.000000, 0.000000, 0.000000],
+        [2.000000, 0.000000, 0.000000],
+        [2.000000, 0.000000, -3.000000],
+        [-4.000000, 0.000000, -3.000000],
+        [-4.000000, 0.000000, 2.000000],
+        [-1.000000, 0.000000, 2.000000],
+        [-1.000000, 0.000000, -6.000000],
+        [3.000000, 0.000000, -6.000000],
+        [3.000000, 0.000000, -8.000000],
+        [-2.000000, 0.000000, -8.000000],
+    ];
     
-    {
-        const controlPoints = [
-            [-2.000000, 0.000000, 0.000000],
-            [-1.000000, 0.000000, 0.000000], 
-            [0.000000, 0.000000, 0.000000],
-            [1.000000, 0.000000, 0.000000],
-            [2.000000, 0.000000, 0.000000],
-            [2.000000, 0.000000, -3.000000],
-            [-4.000000, 0.000000, -3.000000],
-            [-4.000000, 0.000000, 2.000000],
-            [-1.000000, 0.000000, 2.000000],
-            [-1.000000, 0.000000, -6.000000],
-            [3.000000, 0.000000, -6.000000],
-            [3.000000, 0.000000, -8.000000],
-            [-2.000000, 0.000000, -8.000000],
-        ];
-    
-        const p0 = new THREE.Vector3();
-        const p1 = new THREE.Vector3();
-        curve = new THREE.CatmullRomCurve3(
-            controlPoints.map((p, ndx) => {
-                p0.set(...p);
-                p1.set(...controlPoints[(ndx + 1) % controlPoints.length]);
-                return [
-                    (new THREE.Vector3()).copy(p0),
-                    (new THREE.Vector3()).lerpVectors(p0, p1, 0.1),
-                    (new THREE.Vector3()).lerpVectors(p0, p1, 0.9),
-                ];
-            }).flat(),
-            true,
-        );
-    
-        {
-            const points = curve.getPoints(250);
-            const geometry = new THREE.BufferGeometry().setFromPoints(points);
-            const material = new THREE.LineBasicMaterial({color: 0xff0000});
-            curveObject = new THREE.Line(geometry, material);
-            //curveObject.position.set(-5, 0, 0);
-            scene.add(curveObject);
-        }
-    }
+    const {curve, curveObject} = UTILS_PROCEDURAL.createCurve(controlPointsRat);
+    scene.add(curveObject);
     //#endregion
 
     //#region GUI
@@ -217,9 +191,6 @@ function main()
     let frameCount   = 0;
     let fpsTimestamp = 0;
 
-    const meshPosition = new THREE.Vector3();
-    const meshTarget = new THREE.Vector3();
-
     function render()
     {
         timer.update();
@@ -243,33 +214,8 @@ function main()
             fpsTimestamp      = elapsed;
         }
 
-        //#region PATH MOVEMENT
         if (meshes.length > 0)
-        {
-            const pathTime = elapsed * 0.05;
-            const targetOffset = 0.01;
-            meshes.forEach((mesh, ndx) => {
-                // a number between 0 and 1 to evenly space the rats
-                const u = pathTime + ndx / meshes.length;
-
-                // get the first point
-                curve.getPointAt(u % 1, meshPosition);
-                meshPosition.applyMatrix4(curveObject.matrixWorld);
-
-                // get a second point slightly further down the curve
-                curve.getPointAt((u + targetOffset) % 1, meshTarget);
-                meshTarget.applyMatrix4(curveObject.matrixWorld);
-
-                // put the rat at the first point (temporarily)
-                mesh.position.copy(meshPosition);
-                // point the rat to the second point
-                mesh.lookAt(meshTarget);
-
-                // put the rat between the 2 points
-                mesh.position.lerpVectors(meshPosition, meshTarget, 0.5);
-            });  
-        }
-        //#endregion
+            UTILS_PROCEDURAL.updateObjectsOnCurve(curve, curveObject, meshes, elapsed);
 
         orbitControls.update();
         stats.update();
