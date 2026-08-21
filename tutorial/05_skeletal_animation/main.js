@@ -74,7 +74,7 @@ function main()
         addSkeletonFolder(skeletons[0]);
     });
 
-    gltfLoader.load('../../resources/floor.glb', (gltf) => {
+    gltfLoader.load('../../resources/floor_central.glb', (gltf) => {
         UTILS_PROCEDURAL.createCharacter(scene, gltf.scene, [0, 0, 0]);
     });
     //#endregion

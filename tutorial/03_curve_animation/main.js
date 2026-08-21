@@ -215,7 +215,7 @@ function main()
         }
 
         if (meshes.length > 0)
-            UTILS_PROCEDURAL.updateObjectsOnCurve(curve, curveObject, meshes, elapsed);
+            UTILS_PROCEDURAL.updateObjectsOnCurve(curve, curveObject, meshes, elapsed, 0.05);
 
         orbitControls.update();
         stats.update();

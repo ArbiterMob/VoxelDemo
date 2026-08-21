@@ -5,7 +5,7 @@ import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 export function createScene(canvas)
 {
     const renderer = new THREE.WebGLRenderer({ antialias: true, canvas });
-    renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+    //renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
     renderer.toneMapping = THREE.ACESFilmicToneMapping;
     renderer.toneMappingExposure = 1.0; 
     renderer.shadowMap.enabled = true;
@@ -99,13 +99,4 @@ export function dumpObject(obj, lines = [], isLast = true, prefix = '')
 export function unwrapRad(r)
 {
     return Math.atan2(Math.sin(r), Math.cos(r));
-}
-
-export function calculateDistance(pos1, pos2)
-{
-    const x = pos1.x - pos2.x;
-    const y = pos1.y - pos2.y;
-    const z = pos1.z - pos2.z;
-
-    return Math.sqrt(x**2 + y**2 + z**2);
 }

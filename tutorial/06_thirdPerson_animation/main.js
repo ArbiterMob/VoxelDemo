@@ -34,25 +34,25 @@ function main()
 
     //#region GUI
     const gui = new GUI();
-    const guiState = { shadows: true, fog: true };
-    const lightFolder = gui.addFolder('Light');
-    const shadowFolder = lightFolder.addFolder('Shadow Camera');
+    //const guiState = { shadows: true, fog: true };
+    //const lightFolder = gui.addFolder('Light');
+    //const shadowFolder = lightFolder.addFolder('Shadow Camera');
 
-    function updateLight()
+    /*function updateLight()
     {
         light.target.updateMatrixWorld();
         lightHelper.update();
 
         light.shadow.camera.updateProjectionMatrix();
         shadowCameraHelper.update();
-    }
+    }*/
     //updateLight();
 
     function updateCamera() {
         camera.updateProjectionMatrix();
     }
 
-    function createLightFolder()
+    /*function createLightFolder()
     {
         lightHelper = new THREE.DirectionalLightHelper(light);
         lightHelper.visible = false;
@@ -85,7 +85,7 @@ function main()
         shadowFolder.close();
 
         updateLight();
-    }
+    }*/
 
 
     const cameraFolder = gui.addFolder('Camera');
@@ -105,7 +105,8 @@ function main()
     //#endregion
 
     //#region SKELETON
-    let controllableSkeleton, chest, hammer;
+    let controllableSkeleton, hammer;
+    let usingHammer = false;
 
     const gltfLoader = new GLTFLoader();
     gltfLoader.load('../../resources/skeleton.glb', (gltf) => {
@@ -113,17 +114,49 @@ function main()
         console.log(gltf.animations);
     
         // default first skeleton
-        controllableSkeleton = UTILS_SKELETON.createSkeleton(scene, gltf.scene, gltf.animations, [0, 0, 0]);
+        controllableSkeleton = UTILS_SKELETON.createSkeleton(group, gltf.scene, gltf.animations, [0, 0, 0]);
         hammer = controllableSkeleton.root.getObjectByName('ps1_hammer002');
         hammer.visible = false;
-        group.add(controllableSkeleton.root);
+        //group.add(controllableSkeleton.root);
+
+        controllableSkeleton.mixer.addEventListener('finished', onSkeletonActionFinished);
     });
+
+    function onSkeletonActionFinished(event)
+    {
+        const hammerAction = controllableSkeleton.actions['Hammer'];
+
+        if (event.action !== hammerAction)
+            return;
+        
+        const keys = controlsThirdPerson.keys;
+        const vertical = - (Number(keys.forward) - Number(keys.backward));
+        const horizontal = Number(keys.right) - Number(keys.left);
+
+        const active = vertical !== 0 || horizontal !== 0;
+        const play = active ? 'Walk' : 'Idle';
+        const nextAction = controllableSkeleton.actions[play];
+
+        controlsThirdPerson.current = play;
+        UTILS_SKELETON.prepareCrossFade(controllableSkeleton, hammerAction, nextAction, controlsThirdPerson.fadeDuration, false);
+        usingHammer = false;
+
+        for (let i = 0; i < rats.length; i++)
+        {
+            const rat = rats[i];
+            if(!rat.isDead && rat.root.position.distanceToSquared(group.position) <= 1.8 ** 2)
+                {
+                rat.isDead = true;
+                rat.root.visible = false;
+                console.log('killed a rat');
+            }
+        }
+    }
     //#endregion
 
     //#region BATS, LIGHT
-    let light, lightHelper, shadowCameraHelper;
-    let bat;
-    const bats = [];
+    /*let light, lightHelper, shadowCameraHelper;*/
+    const bats = [], batRoots = [];
 
     const controlPointsBat = [
         [1.000000, 0.000000, 0.000000],
@@ -148,18 +181,20 @@ function main()
 
     const curveBat = UTILS_PROCEDURAL.createCurve(controlPointsBat);
 
-    gltfLoader.load('../../resources/bat1.glb', (gltf) => {
+    gltfLoader.load('../../resources/bat.glb', (gltf) => {
         console.log(UTILS_GENERAL.dumpObject(gltf.scene).join('\n'));
         console.log(gltf.animations)
 
-        bat = UTILS_SKELETON.createBat(scene, gltf.scene, gltf.animations, [0, 0, 0]);
-        bats.push(bat);
+        const bat1 = UTILS_SKELETON.createBat(scene, gltf.scene, gltf.animations, [0, 0, 0]);
+        bats.push(bat1);
+        batRoots.push(bat1.root)
 
         const bat2 = UTILS_SKELETON.createBat(scene, gltf.scene, gltf.animations, [0, 0, 0]);
         bats.push(bat2);
+        batRoots.push(bat2.root);
 
-        light = bat.light;
-        createLightFolder();
+        /*light = bat.light;
+        createLightFolder();*/
     });
 
     const ambientlight = new THREE.AmbientLight(0xFFFFFF, 0.7);
@@ -206,7 +241,7 @@ function main()
 
         for (let i = 0; i < curveRatPosition.length; i++)
         {
-            const rat = UTILS_PROCEDURAL.createCharacter(scene, gltf.scene, [0, 0, 0])
+            const rat = UTILS_PROCEDURAL.createCharacter(scene, gltf.scene, [0, 0, 0], true)
             rat.isDead = false;
             rats.push(rat);
 
@@ -224,14 +259,22 @@ function main()
     //#endregion
 
     //#region MISC MESH
+    let chest;
+    const chestPosition = [4, 0, 6]
     gltfLoader.load('../../resources/chest.glb', (gltf) => {
         console.log(UTILS_GENERAL.dumpObject(gltf.scene).join('\n'));
         console.log(gltf.animations);
 
-        chest = UTILS_SKELETON.createChest(scene, gltf.scene, gltf.animations, [4, 0, 6]);
+        chest = UTILS_SKELETON.createChest(scene, gltf.scene, gltf.animations, chestPosition);
     });
 
-    gltfLoader.load('../../resources/floor1.glb', (gltf) => {
+    const pillarPositions = [
+        [7, 0, 7],
+        [7, 0, 21],
+        [21, 0, 7],
+        [21, 0, 21],
+    ]
+    gltfLoader.load('../../resources/floor.glb', (gltf) => {
         console.log(UTILS_GENERAL.dumpObject(gltf.scene).join('\n'));
 
         UTILS_PROCEDURAL.createCharacter(scene, gltf.scene, [0, 0, 0], true);
@@ -240,8 +283,24 @@ function main()
     gltfLoader.load('../../resources/paintings.glb', (gltf) => {
         console.log(UTILS_GENERAL.dumpObject(gltf.scene).join('\n'));
 
-        UTILS_PROCEDURAL.createCharacter(scene, gltf.scene, [0, 0, 0]);
+        UTILS_PROCEDURAL.createCharacter(scene, gltf.scene, [0, 0, 0], true);
     });
+    //#endregion
+
+    //#region COLLIDERS
+    const pillarColliders = [];
+    for (let i = 0; i < pillarPositions.length; i++)
+    {
+        const pillarPosition = pillarPositions[i];
+        pillarColliders.push(
+            new THREE.Box3(
+                new THREE.Vector3().addVectors(new THREE.Vector3(...pillarPosition), new THREE.Vector3(-2, 0, -2)),
+                new THREE.Vector3().addVectors(new THREE.Vector3(...pillarPosition), new THREE.Vector3(2, 0, 2))
+        ));
+    }
+
+    const playerSphere = new THREE.Sphere();
+    playerSphere.radius = 0.5;
     //#endregion
 
     //#region EVENTS THIRD PERSON
@@ -304,7 +363,21 @@ function main()
             console.log(UTILS_GENERAL.calculateDistance(chest.root.position, group.position));
             console.log(chest.isOpen);*/
 
-            if (chest.isOpen === false && UTILS_GENERAL.calculateDistance(chest.root.position, group.position) <= 1.8)
+            if (chest.isOpen === true)
+            {
+                {
+                    if (usingHammer)
+                    return;
+
+                    const hammerAction = controllableSkeleton.actions['Hammer'];
+                    usingHammer = true;
+                    const previousAction = controllableSkeleton.actions[controlsThirdPerson.current];
+
+                    UTILS_SKELETON.prepareCrossFade(controllableSkeleton, previousAction, hammerAction, controlsThirdPerson.fadeDuration, false);
+                }
+            }
+
+            if (chest.isOpen === false && chest.root.position.distanceToSquared(group.position) <= 1.8 ** 2)
             {
                 chest.isOpen = true;
                 chest.openAction.reset();
@@ -312,18 +385,6 @@ function main()
                 chest.openAction.play();
 
                 hammer.visible = true;
-            }
-
-            if (chest.isOpen === true)
-            {
-                rats.forEach((rat) => {
-                    if(!rat.isDead && UTILS_GENERAL.calculateDistance(rat.root.position, group.position) <= 1.0)
-                    {
-                        rat.isDead = true;
-                        rat.root.visible = false;
-                        console.log('killed a rat');
-                    }
-                });
             }
         }
     }
@@ -373,27 +434,43 @@ function main()
     
             // apply camera angle on ease
             ease.applyAxisAngle(up, azimuth);
-    
+
+            // check Collisions    
             nextPosition.copy(position).add(ease);
-            nextPosition.x = THREE.MathUtils.clamp(nextPosition.x, -40, 40);
-            nextPosition.z = THREE.MathUtils.clamp(nextPosition.z, -40, 40);
+            nextPosition.x = THREE.MathUtils.clamp(nextPosition.x, -0.5, 28.5);
+            nextPosition.z = THREE.MathUtils.clamp(nextPosition.z, -0.5, 28.5);
             actualMovement.subVectors(nextPosition, position);
+            playerSphere.center.copy(nextPosition);
+
+            let blocked = false;
+            for (const pillarCollider of pillarColliders)
+            {
+                if (pillarCollider.intersectsSphere(playerSphere))
+                {
+                    blocked = true;
+                    break;
+                }
+            };
+
+            if (chest && nextPosition.distanceToSquared(chest.root.position) <= 0.8 ** 2)
+                blocked = true;
+
+            if(!blocked)
+            {
+                position.copy(nextPosition);
+                camera.position.add(actualMovement);
+
+                group.position.copy(position);
+            }
     
-            //position.add(ease);
-            //camera.position.add(ease);
-            position.copy(nextPosition);
-            camera.position.add(actualMovement);
-    
-    
-            group.position.copy(position);
             group.quaternion.rotateTowards(rotate, controlsThirdPerson.rotateSpeed * delta);
     
             orbitControls.target.copy(position).add({x: 0, y: 1, z: 0});
             followGroup.position.copy(position);
         }
     
-        controllableSkeleton.mixer.update(delta);
-        orbitControls.update();
+        //controllableSkeleton.mixer.update(delta);
+        //orbitControls.update();
     }
     //#endregion
 
@@ -421,7 +498,7 @@ function main()
         }
 
         if (elapsed - fpsTimestamp >= 0.5) {
-            bench.fps         = Math.round(frameCount * 2);
+            bench.fps         = Math.round(frameCount / (elapsed - fpsTimestamp));
             bench.drawCalls   = renderer.info.render.calls;
             bench.triangles   = renderer.info.render.triangles;
             bench.geometries  = renderer.info.memory.geometries;
@@ -430,28 +507,40 @@ function main()
         }
 
         if (controllableSkeleton)
-            updateCharacter(delta);
+        {
+            if (!usingHammer)
+                updateCharacter(delta);
+            
+            controllableSkeleton.mixer.update(delta);
+        }
+            
 
         if (chest)
-            chest.mixer.update(delta);
-
-        if (bat)
         {
-            UTILS_PROCEDURAL.updateObjectsOnCurve(curveBat.curve, curveBat.curveObject, bats.map(obj => obj.root), elapsed, 0.007);
+            chest.mixer.update(delta);
+        }
+
+        if (bats.length > 0)
+        {
+            UTILS_PROCEDURAL.updateObjectsOnCurve(curveBat.curve, curveBat.curveObject, batRoots, elapsed, 0.007);
             
-            bats.forEach((bat) => {
+            for (let i = 0; i < bats.length; i++)
+            {
+                const bat = bats[i];
                 bat.mixer.update(delta);
                 bat.light.target.position.set(bat.root.position.x, 0, bat.root.position.z);
                 bat.light.target.updateMatrixWorld();
-            });
+            }
         }
 
         if (rats.length === curveRatPosition.length)
         {
-            rats.forEach((rat, ndx) => {
+            for (let i = 0; i < rats.length; i++)
+            {
+                const rat = rats[i];
                 if (!rat.isDead)
-                    UTILS_PROCEDURAL.updateObjectsOnCurve(curveRats[ndx], curveRatObjects[ndx], [rat.root], elapsed, 0.05);
-            })
+                    UTILS_PROCEDURAL.updateObjectOnCurve(curveRats[i], curveRatObjects[i], rat.root, elapsed, 0.02);
+            }
         }
 
         orbitControls.update();

@@ -10,10 +10,10 @@ export function createCharacter(scene, sourceRoot, position, onlyFrontFaces = fa
         {
             child.castShadow = true;
             child.receiveShadow = true;
-            if (!child.geometry.attributes.normal)
+            /*if (!child.geometry.attributes.normal)
             {
                 child.geometry.computeVertexNormals();
-            }
+            }*/
 
             if (onlyFrontFaces === true)
             {
@@ -62,16 +62,19 @@ export function createCurve(controlPoints)
     };
 }
 
+
+const objectPosition = new THREE.Vector3();
+const objectTarget = new THREE.Vector3();
 export function updateObjectsOnCurve(curve, curveObject, objects, elapsed, scale)
 {
-    let objectPosition = new THREE.Vector3();
-    let objectTarget = new THREE.Vector3();
-
     const pathTime = elapsed * scale;
     const targetOffset = 0.01;
-    objects.forEach((mesh, ndx) => {
+    for (let i = 0; i < objects.length; i++) 
+    {
+        const mesh = objects[i];
+
         // a number between 0 and 1 to evenly space the objects
-        const u = pathTime + ndx / objects.length;
+        const u = pathTime + i / objects.length;
 
         // get the first point
         curve.getPointAt(u % 1, objectPosition);
@@ -88,5 +91,32 @@ export function updateObjectsOnCurve(curve, curveObject, objects, elapsed, scale
 
         // put the object between the 2 points
         mesh.position.lerpVectors(objectPosition, objectTarget, 0.5);
-    });  
+    }
+}
+
+export function updateObjectOnCurve(curve, curveObject, object, elapsed, scale)
+{
+    const pathTime = elapsed * scale;
+    const targetOffset = 0.01;
+
+    const mesh = object;
+
+    // a number between 0 and 1 to evenly space the objects
+    const u = pathTime;
+
+    // get the first point
+    curve.getPointAt(u % 1, objectPosition);
+    objectPosition.applyMatrix4(curveObject.matrixWorld);
+
+    // get a second point slightly further down the curve
+    curve.getPointAt((u + targetOffset) % 1, objectTarget);
+    objectTarget.applyMatrix4(curveObject.matrixWorld);
+
+    // put the object at the first point (temporarily)
+    mesh.position.copy(objectPosition);
+    // point the object to the second point
+    mesh.lookAt(objectTarget);
+
+    // put the object between the 2 points
+    mesh.position.lerpVectors(objectPosition, objectTarget, 0.5);
 }

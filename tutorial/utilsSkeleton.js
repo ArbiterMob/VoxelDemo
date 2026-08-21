@@ -11,10 +11,10 @@ export function createSkeleton(scene, sourceRoot, animations, position)
         {
             child.castShadow = true;
             child.receiveShadow = true;
-            if (!child.geometry.attributes.normal)
+            /*if (!child.geometry.attributes.normal)
             {
                 child.geometry.computeVertexNormals();
-            }
+            }*/
 
             child.material.transparent = true;
             //child.material.opacity = 0.5;
@@ -26,8 +26,13 @@ export function createSkeleton(scene, sourceRoot, animations, position)
     scene.add(character);
 
     const characterMixer = new THREE.AnimationMixer(character);
-    const idleAction = characterMixer.clipAction(animations[0]);
-    const walkAction = characterMixer.clipAction(animations[1]);
+    const hammerAction = characterMixer.clipAction(animations[0]);
+    const idleAction = characterMixer.clipAction(animations[1]);
+    const walkAction = characterMixer.clipAction(animations[2]);
+
+    hammerAction.setEffectiveTimeScale(2);
+    hammerAction.setLoop(THREE.LoopOnce, 1);
+    hammerAction.clampWhenFinished = true;
         
     const skeletonHelper = new THREE.SkeletonHelper(character.getObjectByName('rig'));
     skeletonHelper.visible = false;
@@ -39,14 +44,17 @@ export function createSkeleton(scene, sourceRoot, animations, position)
         helper: skeletonHelper,
         idleAction,
         walkAction,
+        hammerAction,
         idleWeight: 1,
         walkWeight: 0,
+        hammerWeight: 0,
         crossFadeControls: [],
         
         // this is just for utility
         actions: {
             'Idle': idleAction,
             'Walk': walkAction,
+            'Hammer': hammerAction,
         },
     };
 
@@ -63,6 +71,7 @@ export function createSkeleton(scene, sourceRoot, animations, position)
 
     setWeight(idleAction, skel.animationSettings['modify idle weight']);
     setWeight(walkAction, skel.animationSettings['modify walk weight']);
+    setWeight(hammerAction, skel.hammerWeight);
     idleAction.play();
     walkAction.play();
 
@@ -79,10 +88,10 @@ export function createBat(scene, sourceRoot, animations, position)
         {
             child.castShadow = true;
             child.receiveShadow = true;
-            if (!child.geometry.attributes.normal)
+            /*if (!child.geometry.attributes.normal)
             {
                 child.geometry.computeVertexNormals();
-            }
+            }*/
         }
     });
 
@@ -96,14 +105,14 @@ export function createBat(scene, sourceRoot, animations, position)
     batLight.intensity = 50;
     batLight.castShadow = true;
             
-    batLight.shadow.camera.left = -30;
-    batLight.shadow.camera.right = 30;
-    batLight.shadow.camera.top = 30;
-    batLight.shadow.camera.bottom = -30;
+    batLight.shadow.camera.left = -5;
+    batLight.shadow.camera.right = 5;
+    batLight.shadow.camera.top = 5;
+    batLight.shadow.camera.bottom = -5;
     batLight.shadow.camera.near = 0.1;
     batLight.shadow.camera.far = 5;
-    batLight.shadow.mapSize.width = 1024;
-    batLight.shadow.mapSize.height = 1024;
+    batLight.shadow.mapSize.width = 512;
+    batLight.shadow.mapSize.height = 512;
             
     batLight.shadow.bias = -0.0001;
     batLight.shadow.normalBias = 0.05;
@@ -132,10 +141,10 @@ export function createChest(scene, sourceRoot, animations, position)
         {
             child.castShadow = true;
             child.receiveShadow = true;
-            if (!child.geometry.attributes.normal)
+            /*if (!child.geometry.attributes.normal)
             {
                 child.geometry.computeVertexNormals();
-            }
+            }*/
         }
     });
 
@@ -212,14 +221,19 @@ export function synchronizeCrossFade(mixer, startAction, endAction, duration)
 export function executeCrossFade(startAction, endAction, duration)
 {
     setWeight(endAction, 1);
-    endAction.time = 0;
+
+    endAction.enabled = true;
+    endAction.paused = false;
+    endAction.reset();
+    endAction.play();
+
     startAction.crossFadeTo(endAction, duration, true);
 }
 
 export function setWeight(action, weight)
 {
     action.enabled = true;
-    action.setEffectiveTimeScale(1);
+    //action.setEffectiveTimeScale(1);
     action.setEffectiveWeight(weight);
 }
 
